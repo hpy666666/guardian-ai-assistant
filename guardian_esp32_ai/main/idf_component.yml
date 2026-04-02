@@ -1,0 +1,11 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## Opus encoder/decoder for audio
+  78/esp-opus-encoder: "~2.4.1"
+
+  ## WebSocket client (在 IDF v5.x 中已移至组件管理器)
+  espressif/esp_websocket_client: ">=1.1.0"
+
+  ## Required IDF version
+  idf:
+    version: ">=5.4.0"

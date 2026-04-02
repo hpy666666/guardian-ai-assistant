@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guardian Cloud · 独居老人安全监护系统</title>
+
+  <!-- ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <!-- Leaflet 地图 -->
+  <link  rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --sidebar-w : 220px;
+      --header-h  : 56px;
+      --bg        : #f0f2f5;
+      --surface   : #ffffff;
+      --border    : #e4e7ed;
+      --text      : #1d2129;
+      --text-dim  : #86909c;
+      --accent    : #165dff;
+      --accent-bg : #e8f0ff;
+      --green     : #00b42a;
+      --green-bg  : #e8ffea;
+      --yellow    : #ff7d00;
+      --yellow-bg : #fff3e8;
+      --red       : #f53f3f;
+      --red-bg    : #ffece8;
+      --sidebar-bg: #ffffff;
+      --nav-hover : #f2f6ff;
+      --nav-active: #e8f0ff;
+      --shadow    : 0 1px 4px rgba(0,0,0,.08);
+    }
+
+    html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; color: var(--text); background: var(--bg); }
+
+    /* ══ 布局骨架 ══════════════════════════════════ */
+    .layout         { display: flex; height: 100vh; overflow: hidden; }
+    .sidebar        { width: var(--sidebar-w); background: var(--sidebar-bg); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
+    .main-wrap      { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .topbar         { height: var(--header-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 20px; flex-shrink: 0; box-shadow: var(--shadow); }
+    .content        { flex: 1; overflow-y: auto; padding: 14px 18px; display: flex; flex-direction: column; }
+
+    /* ══ 侧边栏 ════════════════════════════════════ */
+    .sidebar-logo   { height: var(--header-h); display: flex; align-items: center; padding: 0 20px; border-bottom: 1px solid var(--border); gap: 10px; flex-shrink: 0; }
+    .logo-icon      { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px; }
+    .logo-text      { font-size: 15px; font-weight: 600; color: var(--text); }
+    .logo-sub       { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+
+    .nav-group      { padding: 12px 12px 4px; }
+    .nav-group-title{ font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .6px; padding: 0 8px; margin-bottom: 4px; }
+    .nav-item       { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 8px; cursor: pointer; color: var(--text-dim); transition: all .15s; font-size: 13px; font-weight: 500; margin-bottom: 2px; }
+    .nav-item:hover { background: var(--nav-hover); color: var(--text); }
+    .nav-item.active{ background: var(--nav-active); color: var(--accent); }
+    .nav-item .icon { font-size: 16px; width: 20px; text-align: center; }
+    .nav-badge      { margin-left: auto; background: var(--red); color: #fff; font-size: 10px; border-radius: 8px; padding: 1px 5px; }
+
+    /* ══ 顶栏 ══════════════════════════════════════ */
+    .topbar-title   { font-size: 16px; font-weight: 600; }
+    .topbar-right   { display: flex; align-items: center; gap: 14px; }
+    .device-select  { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .online-badge   { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); }
+    .dot            { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+    .dot.online     { background: var(--green); box-shadow: 0 0 0 3px #e8ffea; }
+    .dot.offline    { background: var(--red); }
+    #last-update    { font-size: 12px; color: var(--text-dim); }
+
+    /* 顶栏用户按钮 */
+    .topbar-user    { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; cursor: pointer; transition: background .15s; border: 1px solid var(--border); background: var(--surface); }
+    .topbar-user:hover { background: var(--nav-hover); }
+    .topbar-user .t-avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; }
+    .topbar-user span  { font-size: 13px; font-weight: 500; }
+
+    /* ══ 页面（通过 JS 切换 display）══════════════ */
+    .page { display: none; }
+    .page.active { display: flex; flex-direction: column; min-height: 100%; }
+
+    /* ══ 卡片通用 ══════════════════════════════════ */
+    .card           { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; box-shadow: var(--shadow); }
+    .card-title     { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 12px; }
+
+    /* ══ 概览页 ════════════════════════════════════ */
+    .stat-grid      { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .stat-card      { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); }
+    .stat-label     { font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+    .stat-val       { font-size: 28px; font-weight: 700; line-height: 1; }
+    .stat-unit      { font-size: 12px; color: var(--text-dim); margin-top: 4px; }
+    .stat-val.good  { color: var(--green); }
+    .stat-val.warn  { color: var(--yellow); }
+    .stat-val.danger{ color: var(--red); }
+    .stat-val.normal{ color: var(--text); }
+
+    /* 时间范围 */
+    .range-bar      { display: flex; gap: 6px; margin-bottom: 12px; }
+    .range-btn      { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); font-size: 12px; cursor: pointer; }
+    .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    /* 折线图区域：自适应剩余高度，最小180px，大屏自动撑大 */
+    .chart-grid     { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; flex: 1; }
+    @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
+    .chart-box      { height: clamp(180px, calc((100vh - var(--header-h) - 310px) / 2), 360px); }
+
+    /* ══ 告警页 ════════════════════════════════════ */
+    .alert-filters  { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+    .filter-btn     { padding: 5px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text-dim); font-size: 12px; cursor: pointer; transition: all .15s; }
+    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .alert-table    { width: 100%; border-collapse: collapse; }
+    .alert-table th { background: var(--bg); padding: 10px 14px; text-align: left; font-size: 12px; color: var(--text-dim); font-weight: 600; border-bottom: 1px solid var(--border); }
+    .alert-table td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: middle; }
+    .alert-table tr:last-child td { border-bottom: none; }
+    .alert-table tr:hover td { background: var(--bg); }
+    .tag            { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .tag.fall       { background: var(--red-bg);    color: var(--red); }
+    .tag.gas        { background: var(--yellow-bg); color: var(--yellow); }
+    .empty-tip      { text-align: center; color: var(--text-dim); padding: 40px 0; font-size: 13px; }
+
+    /* ══ 地图页 ════════════════════════════════════ */
+    #page-map .card   { flex: 1; display: flex; flex-direction: column; margin-bottom: 0; }
+    #map-container    { flex: 1; min-height: 300px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .map-info         { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 12px; flex-shrink: 0; }
+    .map-info-item  { background: var(--bg); border-radius: 8px; padding: 10px 14px; }
+    .map-info-label { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+    .map-info-value { font-size: 14px; font-weight: 600; }
+
+    /* 手动输入经纬度 */
+    .manual-gps-input { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    .manual-gps-input input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; width: 160px; }
+    .manual-gps-input input:focus { outline: none; border-color: var(--accent); }
+    .manual-gps-input button { padding: 8px 16px; background: var(--accent); color: #fff; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; }
+    .manual-gps-input button:hover { opacity: 0.9; }
+    #manual-gps-msg { font-size: 12px; color: var(--green); }
+    #manual-gps-msg.error { color: var(--red); }
+
+    /* ══ 视频页 ════════════════════════════════════ */
+    .video-wrap     { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; }
+    .video-player   { background: #1a1a2e; border-radius: 10px; aspect-ratio: 16/9; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; gap: 12px; border: 2px dashed #334; }
+    .video-player .play-icon { font-size: 48px; opacity: .4; }
+    .video-player p { font-size: 13px; opacity: .5; }
+    .video-player .stream-url { font-size: 11px; background: rgba(255,255,255,.08); padding: 6px 12px; border-radius: 6px; font-family: monospace; opacity: .7; }
+    .video-info     { display: flex; flex-direction: column; gap: 12px; }
+    .video-stat     { background: var(--bg); border-radius: 8px; padding: 12px 14px; }
+    .video-stat-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+    .video-stat-value { font-size: 16px; font-weight: 600; }
+    .ai-results     { margin-top: 4px; }
+    .ai-tag         { display: inline-block; margin: 3px 3px 0 0; padding: 3px 10px; border-radius: 12px; font-size: 11px; background: var(--accent-bg); color: var(--accent); font-weight: 500; }
+    .ai-tag.alert   { background: var(--red-bg); color: var(--red); }
+    .connect-form   { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+    .connect-form input { border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-size: 13px; color: var(--text); background: var(--surface); width: 100%; }
+    .connect-form input:focus { outline: none; border-color: var(--accent); }
+    .btn-primary    { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; font-weight: 500; }
+    .btn-primary:hover { opacity: .88; }
+
+    /* ══ 侧边栏底部用户区 ══════════════════════════ */
+    .sidebar-spacer { flex: 1; }
+    .sidebar-user   { padding: 10px 12px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .user-row       { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background .15s; }
+    .user-row:hover { background: var(--nav-hover); }
+    .avatar         { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+    .user-name      { font-size: 13px; font-weight: 600; }
+    .user-role      { font-size: 11px; color: var(--text-dim); }
+    .logout-btn     { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; cursor: pointer; color: var(--red); font-size: 13px; margin-top: 2px; transition: background .15s; }
+    .logout-btn:hover { background: var(--red-bg); }
+
+    /* ══ 登录遮罩 ══════════════════════════════════ */
+    #login-mask {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(240,242,245,.96);
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(4px);
+    }
+    .login-box {
+      width: 360px; background: var(--surface);
+      border-radius: 16px; padding: 40px 36px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.12);
+      display: flex; flex-direction: column; align-items: center;
+    }
+    .login-logo { width: 52px; height: 52px; background: var(--accent); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 26px; margin-bottom: 16px; }
+    .login-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .login-sub   { font-size: 13px; color: var(--text-dim); margin-bottom: 28px; }
+    .login-field { width: 100%; margin-bottom: 14px; }
+    .login-field label { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); margin-bottom: 6px; }
+    .login-field input {
+      width: 100%; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 14px; color: var(--text);
+      background: var(--bg); outline: none; transition: border-color .15s;
+    }
+    .login-field input:focus { border-color: var(--accent); background: var(--surface); }
+    .login-btn {
+      width: 100%; padding: 11px; background: var(--accent); color: #fff;
+      border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+      cursor: pointer; margin-top: 6px; transition: opacity .15s;
+    }
+    .login-btn:hover { opacity: .88; }
+    .login-err { font-size: 12px; color: var(--red); margin-top: 10px; min-height: 16px; text-align: center; }
+    .login-hint { font-size: 11px; color: var(--text-dim); margin-top: 20px; }
+
+    /* ══ 个人中心弹窗 ══════════════════════════════ */
+    #profile-modal {
+      position: fixed; inset: 0; z-index: 8888;
+      background: rgba(0,0,0,.3);
+      display: none; align-items: center; justify-content: center;
+      backdrop-filter: blur(2px);
+    }
+    #profile-modal.show { display: flex; }
+    .profile-box {
+      width: 400px; background: var(--surface);
+      border-radius: 16px; overflow: hidden;
+      box-shadow: 0 8px 40px rgba(0,0,0,.16);
+    }
+    .profile-header {
+      background: linear-gradient(135deg, #165dff 0%, #0fc6c2 100%);
+      padding: 28px 28px 20px;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      position: relative;
+    }
+    .btn-close-modal {
+      position: absolute; top: 14px; right: 16px;
+      background: rgba(255,255,255,.2); border: none; color: #fff;
+      width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+      font-size: 16px; display: flex; align-items: center; justify-content: center;
+      transition: background .15s;
+    }
+    .btn-close-modal:hover { background: rgba(255,255,255,.35); }
+    .profile-avatar-big { width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.25); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; border: 3px solid rgba(255,255,255,.6); }
+    .profile-name    { font-size: 18px; font-weight: 700; color: #fff; }
+    .profile-role-tag{ background: rgba(255,255,255,.25); color: #fff; font-size: 11px; padding: 2px 10px; border-radius: 20px; }
+    .profile-body    { padding: 24px 28px; }
+    .profile-row     { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .profile-row:last-child { border-bottom: none; }
+    .profile-row-label { font-size: 13px; color: var(--text-dim); }
+    .profile-row-value { font-size: 13px; font-weight: 600; }
+    .btn-logout-modal  { width: 100%; padding: 10px; background: var(--red-bg); color: var(--red); border: 1px solid #ffc0c0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 18px; transition: all .15s; }
+    .btn-logout-modal:hover { background: var(--red); color: #fff; }
+
+    /* ══ AI 助手页面专属样式 ══════════════════════════════ */
+    .ai-layout        { display: flex; flex-direction: column; gap: 12px; }
+    .ai-section       { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; }
+    .ai-section-hd    { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; cursor: pointer; user-select: none; transition: background .15s; }
+    .ai-section-hd:hover { background: var(--bg); }
+    .ai-section-title { font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; display: flex; align-items: center; gap: 8px; }
+    .ai-section-title .sec-icon { font-size: 14px; }
+    .ai-collapse-btn  { font-size: 11px; color: var(--text-dim); background: none; border: none; cursor: pointer; padding: 2px 6px; border-radius: 4px; transition: all .15s; }
+    .ai-collapse-btn:hover { background: var(--border); }
+    .ai-section-bd    { padding: 0 16px 14px; border-top: 1px solid var(--border); }
+    .ai-section-bd.collapsed { display: none; }
+
+    /* 表单行 */
+    .ai-form-row      { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .ai-form-label    { font-size: 12px; color: var(--text-dim); min-width: 56px; }
+    .ai-form-input    { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px; color: var(--text); background: var(--surface); outline: none; transition: border-color .15s; }
+    .ai-form-input:focus { border-color: var(--accent); }
+    .ai-form-select   { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; outline: none; }
+    .ai-form-select:focus { border-color: var(--accent); }
+    .ai-form-textarea { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 13px; color: var(--text); background: var(--surface); outline: none; resize: vertical; min-height: 64px; width: 100%; transition: border-color .15s; font-family: inherit; }
+    .ai-form-textarea:focus { border-color: var(--accent); }
+
+    /* 滑块行 */
+    .ai-slider-row    { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .ai-slider        { flex: 1; -webkit-appearance: none; height: 4px; border-radius: 2px; background: var(--border); outline: none; cursor: pointer; }
+    .ai-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: pointer; box-shadow: 0 0 0 3px var(--accent-bg); }
+    .ai-slider-val    { font-size: 12px; font-weight: 600; color: var(--accent); min-width: 46px; text-align: right; }
+
+    /* 按钮组 */
+    .ai-btn-row       { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .ai-btn           { padding: 7px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500; border: none; transition: all .15s; }
+    .ai-btn-primary   { background: var(--accent); color: #fff; }
+    .ai-btn-primary:hover { opacity: .88; }
+    .ai-btn-ghost     { background: var(--surface); color: var(--text-dim); border: 1px solid var(--border); }
+    .ai-btn-ghost:hover { background: var(--bg); color: var(--text); }
+    .ai-btn-danger    { background: var(--red-bg); color: var(--red); border: 1px solid #ffc0c0; }
+    .ai-btn-danger:hover { background: var(--red); color: #fff; }
+    .ai-save-status   { font-size: 12px; margin-left: 4px; }
+    .ai-save-status.ok  { color: var(--green); }
+    .ai-save-status.err { color: var(--red); }
+
+    /* 记忆标签 */
+    .memory-list      { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 180px; overflow-y: auto; }
+    .memory-item      { display: flex; align-items: flex-start; gap: 8px; background: var(--bg); border-radius: 6px; padding: 7px 10px; font-size: 12px; }
+    .memory-item-text { flex: 1; line-height: 1.5; color: var(--text); }
+    .memory-item-del  { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 12px; padding: 0 2px; border-radius: 3px; flex-shrink: 0; }
+    .memory-item-del:hover { color: var(--red); background: var(--red-bg); }
+    .memory-empty     { font-size: 12px; color: var(--text-dim); padding: 10px 0; text-align: center; }
+    .memory-add-row   { display: flex; gap: 8px; margin-top: 10px; }
+    .memory-add-row input { flex: 1; }
+
+    /* 对话框 */
+    .ai-chat-wrap     { display: flex; flex-direction: column; }
+    #ai-chat-log      { flex: 1; overflow-y: auto; padding: 10px; background: var(--bg); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+    .chat-height-open { height: 340px; }
+    .chat-height-mini { height: 0; overflow: hidden; }
+    .ai-status-bar    { font-size: 11px; color: var(--text-dim); margin-top: 6px; display: flex; align-items: center; gap: 12px; }
+    .ai-status-bar code { background: var(--bg); border-radius: 3px; padding: 1px 5px; font-size: 11px; }
+
+    /* ══ 响应式 ════════════════════════════════════ */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .video-wrap { grid-template-columns: 1fr; }
+      .map-info { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══ 登录遮罩 ══════════════════════════════════ -->
+<div id="login-mask">
+  <div class="login-box">
+    <div class="login-logo">🛡</div>
+    <div class="login-title">Guardian Cloud</div>
+    <div class="login-sub">独居老人安全监护系统</div>
+    <div class="login-field">
+      <label>用户名</label>
+      <input type="text" id="login-user" placeholder="admin" autocomplete="username" />
+    </div>
+    <div class="login-field">
+      <label>密码</label>
+      <input type="password" id="login-pass" placeholder="••••••" autocomplete="current-password" />
+    </div>
+    <button class="login-btn" onclick="doLogin()">登 录</button>
+    <div class="login-err" id="login-err"></div>
+    <div class="login-hint">演示账号：admin / 12345</div>
+  </div>
+</div>
+
+<!-- ══ 个人中心弹窗 ══════════════════════════════ -->
+<div id="profile-modal">
+  <div class="profile-box">
+    <div class="profile-header">
+      <button class="btn-close-modal" onclick="closeProfile()">✕</button>
+      <div class="profile-avatar-big">A</div>
+      <div class="profile-name">Administrator</div>
+      <div class="profile-role-tag">系统管理员</div>
+    </div>
+    <div class="profile-body">
+      <div class="profile-row">
+        <span class="profile-row-label">用户名</span>
+        <span class="profile-row-value">admin</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-row-label">角色</span>
+        <span class="profile-row-value">系统管理员</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-row-label">监护设备</span>
+        <span class="profile-row-value" id="profile-device">设备 001</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-row-label">登录时间</span>
+        <span class="profile-row-value" id="profile-login-time">--</span>
+      </div>
+      <div class="profile-row">
+        <span class="profile-row-label">系统版本</span>
+        <span class="profile-row-value">v1.0.0</span>
+      </div>
+      <button class="btn-logout-modal" onclick="doLogout()">退出登录</button>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ══ 侧边栏 ══════════════════════════════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🛡</div>
+      <div>
+        <div class="logo-text">Guardian</div>
+        <div class="logo-sub">安全监护系统</div>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">监控</div>
+      <div class="nav-item active" data-page="overview">
+        <span class="icon">📊</span> 数据概览
+      </div>
+      <div class="nav-item" data-page="map">
+        <span class="icon">🗺</span> 实时位置
+      </div>
+      <div class="nav-item" data-page="video">
+        <span class="icon">📷</span> 视频监控
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">事件</div>
+      <div class="nav-item" data-page="alerts">
+        <span class="icon">🔔</span> 告警历史
+        <span class="nav-badge" id="nav-alert-count">0</span>
+      </div>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-group-title">AI</div>
+      <div class="nav-item" data-page="ai">
+        <span class="icon">🤖</span> AI 语音助手
+      </div>
+    </div>
+
+    <!-- 侧边栏底部用户区 -->
+    <div class="sidebar-spacer"></div>
+    <div class="sidebar-user">
+      <div class="user-row" onclick="openProfile()">
+        <div class="avatar">A</div>
+        <div>
+          <div class="user-name">admin</div>
+          <div class="user-role">系统管理员</div>
+        </div>
+      </div>
+      <div class="logout-btn" onclick="doLogout()">
+        <span>⏻</span> 退出登录
+      </div>
+    </div>
+  </aside>
+
+  <!-- ══ 主区域 ════════════════════════════════════ -->
+  <div class="main-wrap">
+
+    <!-- 顶栏 -->
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">数据概览</div>
+      <div class="topbar-right">
+        <select class="device-select" id="device-select">
+          <option value="001">设备 001</option>
+        </select>
+        <div class="online-badge">
+          <div class="dot" id="status-dot"></div>
+          <span id="status-text">连接中...</span>
+        </div>
+        <span id="last-update"></span>
+        <div class="topbar-user" onclick="openProfile()">
+          <div class="t-avatar">A</div>
+          <span>admin</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="content">
+
+      <!-- ── 页面：数据概览 ── -->
+      <div class="page active" id="page-overview">
+        <!-- 状态卡片 -->
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">心率</div>
+            <div class="stat-val normal" id="val-hr">--</div>
+            <div class="stat-unit">bpm</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">血氧</div>
+            <div class="stat-val normal" id="val-spo2">--</div>
+            <div class="stat-unit">%</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">温度</div>
+            <div class="stat-val normal" id="val-temp">--</div>
+            <div class="stat-unit">°C</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">湿度</div>
+            <div class="stat-val normal" id="val-humi">--</div>
+            <div class="stat-unit">%RH</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">光照强度</div>
+            <div class="stat-val normal" id="val-lux">--</div>
+            <div class="stat-unit">lux</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">天然气 MQ4</div>
+            <div class="stat-val normal" id="val-mq4">--</div>
+            <div class="stat-unit">mV</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">一氧化碳 MQ7</div>
+            <div class="stat-val normal" id="val-mq7">--</div>
+            <div class="stat-unit">mV</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">电量</div>
+            <div class="stat-val normal" id="val-bat">--</div>
+            <div class="stat-unit">%</div>
+          </div>
+        </div>
+
+        <!-- IMU 姿态数据卡片 -->
+        <div class="stat-grid" style="margin-bottom: 14px;">
+          <div class="stat-card">
+            <div class="stat-label">横滚角 Roll</div>
+            <div class="stat-val normal" id="val-roll">--</div>
+            <div class="stat-unit">deg</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">俯仰角 Pitch</div>
+            <div class="stat-val normal" id="val-pitch">--</div>
+            <div class="stat-unit">deg</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">加速度幅值</div>
+            <div class="stat-val normal" id="val-accmag">--</div>
+            <div class="stat-unit">g</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">跌倒状态</div>
+            <div class="stat-val normal" id="val-fall">--</div>
+            <div class="stat-unit" id="val-fall-desc"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">SD卡</div>
+            <div class="stat-val normal" id="val-sd">--</div>
+            <div class="stat-unit" id="val-sd-desc"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">4G模块</div>
+            <div class="stat-val normal" id="val-lte">--</div>
+            <div class="stat-unit" id="val-lte-desc"></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">设备状态</div>
+            <div class="stat-val normal" id="val-status" style="font-size:18px; padding-top:6px;">--</div>
+            <div class="stat-unit" id="val-status-time"></div>
+          </div>
+        </div>
+
+        <!-- 时间范围 -->
+        <div class="range-bar">
+          <span style="font-size:12px;color:var(--text-dim);line-height:26px;margin-right:4px;">时间范围</span>
+          <button class="range-btn" data-min="10">10分</button>
+          <button class="range-btn active" data-min="30">30分</button>
+          <button class="range-btn" data-min="60">1小时</button>
+          <button class="range-btn" data-min="360">6小时</button>
+        </div>
+
+        <!-- 折线图 -->
+        <div class="chart-grid">
+          <div class="card">
+            <div class="card-title">心率趋势 (bpm)</div>
+            <div class="chart-box" id="chart-hr"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">血氧趋势 (%)</div>
+            <div class="chart-box" id="chart-spo2"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">温度 (°C)</div>
+            <div class="chart-box" id="chart-temp"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">湿度 (%RH)</div>
+            <div class="chart-box" id="chart-humi"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 页面：实时位置 ── -->
+      <div class="page" id="page-map">
+        <div class="card" style="margin-bottom:0">
+          <div class="card-title">实时 GPS 位置</div>
+          <!-- 手动输入经纬度 -->
+          <div class="manual-gps-input">
+            <input type="text" id="manual-lat" placeholder="纬度 (如 39.9042)" />
+            <input type="text" id="manual-lon" placeholder="经度 (如 116.4074)" />
+            <button onclick="locateManual()">定位</button>
+            <span id="manual-gps-msg"></span>
+          </div>
+          <div id="map-container"></div>
+          <div class="map-info">
+            <div class="map-info-item">
+              <div class="map-info-label">纬度</div>
+              <div class="map-info-value" id="map-lat">--</div>
+            </div>
+            <div class="map-info-item">
+              <div class="map-info-label">经度</div>
+              <div class="map-info-value" id="map-lon">--</div>
+            </div>
+            <div class="map-info-item">
+              <div class="map-info-label">最后更新</div>
+              <div class="map-info-value" id="map-time">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 页面：视频监控 ── -->
+      <div class="page" id="page-video">
+        <div class="video-wrap">
+          <!-- 主播放器 -->
+          <div>
+            <div class="card" style="padding:0; overflow:hidden; margin-bottom:14px;">
+              <div class="video-player" id="video-player">
+                <div class="play-icon">▶</div>
+                <p>K230 摄像头画面（待接入）</p>
+                <div class="stream-url" id="stream-url-display">未配置推流地址</div>
+              </div>
+            </div>
+            <!-- 连接配置 -->
+            <div class="card">
+              <div class="card-title">推流配置</div>
+              <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">
+                K230 通过 RTSP 推流后，将地址填入下方。<br>
+                浏览器原生不支持 RTSP，需中转为 HLS 或 WebRTC（后续实现）。
+              </p>
+              <div class="connect-form">
+                <input type="text" id="rtsp-url" placeholder="rtsp://192.168.1.x:8554/live" />
+                <button class="btn-primary" onclick="saveStreamUrl()">保存地址</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右侧 AI 信息面板 -->
+          <div class="video-info">
+            <div class="card">
+              <div class="card-title">AI 推理状态</div>
+              <div class="video-stat">
+                <div class="video-stat-label">跌倒检测</div>
+                <div class="video-stat-value" id="ai-fall-status">待接入</div>
+              </div>
+              <div class="video-stat" style="margin-top:8px;">
+                <div class="video-stat-label">最近告警</div>
+                <div class="ai-results" id="ai-recent-alerts">
+                  <span style="font-size:12px;color:var(--text-dim);">暂无</span>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">进程状态（RT-Thread Smart）</div>
+              <div style="display:flex;flex-direction:column;gap:8px;">
+                <div class="video-stat">
+                  <div class="video-stat-label">media_proc（摄像头采集）</div>
+                  <div class="video-stat-value" style="color:var(--text-dim);font-size:13px;">待接入</div>
+                </div>
+                <div class="video-stat">
+                  <div class="video-stat-label">ai_proc（KPU 推理）</div>
+                  <div class="video-stat-value" style="color:var(--text-dim);font-size:13px;">待接入</div>
+                </div>
+                <div class="video-stat">
+                  <div class="video-stat-label">ctrl_proc（实时控制）</div>
+                  <div class="video-stat-value" style="color:var(--text-dim);font-size:13px;">待接入</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 页面：告警历史 ── -->
+      <div class="page" id="page-alerts">
+        <div class="card">
+          <div class="card-title">告警历史（近24小时）</div>
+          <div class="alert-filters">
+            <button class="filter-btn active" data-type="all">全部</button>
+            <button class="filter-btn" data-type="fall">跌倒</button>
+            <button class="filter-btn" data-type="gas">气体</button>
+          </div>
+          <table class="alert-table">
+            <thead>
+              <tr>
+                <th>类型</th>
+                <th>时间</th>
+                <th>设备</th>
+                <th>详情</th>
+              </tr>
+            </thead>
+            <tbody id="alert-tbody">
+              <tr><td colspan="4" class="empty-tip">暂无告警记录</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── 页面：AI 语音助手 ── -->
+      <div class="page" id="page-ai">
+        <div class="ai-layout">
+
+          <!-- ① 服务器状态 -->
+          <div class="ai-section">
+            <div class="ai-section-hd" onclick="toggleSection('sec-server')">
+              <div class="ai-section-title"><span class="sec-icon">🖥</span> 服务器连接</div>
+              <button class="ai-collapse-btn" id="sec-server-btn">▲ 收起</button>
+            </div>
+            <div class="ai-section-bd" id="sec-server">
+              <div class="ai-form-row">
+                <span class="ai-form-label">服务器</span>
+                <input id="ai-server-url" type="text" class="ai-form-input" value="ws://127.0.0.1:8000" placeholder="ws://127.0.0.1:8000" style="width:220px;" />
+                <button class="ai-btn ai-btn-ghost" onclick="checkServerStatus()">🔄 检测连接</button>
+                <span id="ai-llm-status" style="font-size:12px;color:var(--text-dim);">未检测</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;padding-left:66px;">
+                填写 xiaozhi-esp32-server 的 WebSocket 地址（默认端口 8000）。
+                大模型 / TTS / ASR 的切换请直接修改服务器的 <code>data/.config.yaml</code>。
+              </div>
+            </div>
+          </div>
+
+          <!-- ② TTS 参数（PaddleSpeechTTS） -->
+          <div class="ai-section">
+            <div class="ai-section-hd" onclick="toggleSection('sec-tts')">
+              <div class="ai-section-title"><span class="sec-icon">🔊</span> TTS 参数（PaddleSpeechTTS）</div>
+              <button class="ai-collapse-btn" id="sec-tts-btn">▲ 收起</button>
+            </div>
+            <div class="ai-section-bd" id="sec-tts">
+              <!-- spk_id -->
+              <div class="ai-form-row">
+                <span class="ai-form-label">说话人</span>
+                <input id="tts-spk-id" type="number" min="0" max="10" step="1" value="0"
+                  class="ai-form-input" style="width:70px;"
+                  oninput="onTtsParamChange()">
+                <span style="font-size:11px;color:var(--text-dim);margin-left:8px;">spk_id（0 = 默认，可选 0~10）</span>
+              </div>
+              <!-- speed -->
+              <div class="ai-form-row" style="margin-top:8px;">
+                <span class="ai-form-label">语速</span>
+                <input id="tts-speed" type="range" min="0.5" max="2.0" step="0.05" value="1.0"
+                  style="width:160px;cursor:pointer;" oninput="onTtsParamChange()">
+                <span id="tts-speed-val" style="font-size:12px;color:var(--text);margin-left:8px;min-width:32px;">1.0</span>
+              </div>
+              <!-- volume -->
+              <div class="ai-form-row" style="margin-top:8px;">
+                <span class="ai-form-label">音量</span>
+                <input id="tts-volume" type="range" min="0.5" max="2.0" step="0.05" value="1.0"
+                  style="width:160px;cursor:pointer;" oninput="onTtsParamChange()">
+                <span id="tts-volume-val" style="font-size:12px;color:var(--text);margin-left:8px;min-width:32px;">1.0</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:8px;padding-left:66px;">
+                当前后端使用本地 <strong>PaddleSpeechTTS</strong>（端口 8092，仅支持中文）。
+                保存后写入服务器 <code>data/.config.yaml</code>，<strong>重启 xiaozhi-server 服务后生效</strong>。
+              </div>
+              <div class="ai-btn-row" style="margin-top:10px;">
+                <button class="ai-btn" onclick="saveTtsConfig()" id="tts-save-btn">💾 保存配置</button>
+                <button class="ai-btn ai-btn-ghost" onclick="loadTtsConfig()">↺ 从服务器读取</button>
+                <span class="ai-save-status" id="save-tts-status"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ③ 角色性格 -->
+          <div class="ai-section">
+            <div class="ai-section-hd" onclick="toggleSection('sec-persona')">
+              <div class="ai-section-title"><span class="sec-icon">🎭</span> 角色性格</div>
+              <button class="ai-collapse-btn" id="sec-persona-btn">▲ 收起</button>
+            </div>
+            <div class="ai-section-bd" id="sec-persona">
+              <div style="font-size:12px;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">
+                角色设定（System Prompt）保存在服务器 <code>data/.config.yaml</code> 的 <code>prompt</code> 字段，
+                修改后重启服务生效。下方为参考模板，可复制后粘贴到配置文件。
+              </div>
+              <textarea id="ai-persona-input" class="ai-form-textarea" readonly
+                style="background:var(--surface-2,#1e1e1e);color:var(--text-dim);cursor:default;"
+                placeholder="加载中..."></textarea>
+              <div class="ai-btn-row">
+                <button class="ai-btn ai-btn-ghost" onclick="copyPersona()">📋 复制设定内容</button>
+                <button class="ai-btn ai-btn-ghost" onclick="loadDefaultPersona()">↺ 恢复默认模板</button>
+                <span class="ai-save-status" id="save-persona-status"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ④ 对话记忆 -->
+          <div class="ai-section">
+            <div class="ai-section-hd" onclick="toggleSection('sec-memory')">
+              <div class="ai-section-title"><span class="sec-icon">🧠</span> 对话记忆 <span id="memory-count-badge" style="font-size:10px;background:var(--accent-bg);color:var(--accent);padding:1px 6px;border-radius:8px;font-weight:600;"></span></div>
+              <button class="ai-collapse-btn" id="sec-memory-btn">▲ 收起</button>
+            </div>
+            <div class="ai-section-bd" id="sec-memory">
+              <div id="memory-nomem-hint" style="display:none;font-size:12px;color:var(--text-dim);margin:10px 0 6px;padding:10px 12px;background:var(--surface-2,#1e1e1e);border-radius:6px;border-left:3px solid var(--accent);">
+                当前服务器记忆模块为 <code>nomem</code>（未启用）。如需长期记忆，请在 <code>data/.config.yaml</code> 中将
+                <code>selected_module.Memory</code> 改为 <code>mem_local_short</code>，重启服务后生效。
+              </div>
+              <div style="font-size:12px;color:var(--text-dim);margin-top:10px;margin-bottom:6px;">
+                每次 ESP32 对话结束后，AI 自动提取值得记住的信息（习惯、偏好、健康状况等），
+                注入下一轮对话上下文（最多显示最近 5 条）。重启服务后清空。
+              </div>
+              <div class="memory-list" id="memory-list"></div>
+              <div class="ai-btn-row" style="margin-top:8px;">
+                <button class="ai-btn ai-btn-ghost"  onclick="fetchMemory()">🔄 刷新</button>
+                <button class="ai-btn ai-btn-danger" onclick="clearMemory()">清空全部记忆</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ⑤ 对话测试 -->
+          <div class="ai-section">
+            <div class="ai-section-hd" onclick="toggleSection('sec-chat')">
+              <div class="ai-section-title"><span class="sec-icon">💬</span> 对话测试</div>
+              <button class="ai-collapse-btn" id="sec-chat-btn">▲ 收起</button>
+            </div>
+            <div class="ai-section-bd" id="sec-chat">
+              <div class="ai-chat-wrap" style="margin-top:10px;">
+                <div id="ai-chat-log" class="chat-height-open">
+                  <div style="text-align:center;color:var(--text-dim);font-size:12px;padding:20px 0;">
+                    点击「连接」后可向服务器发送文字消息测试 AI 对话
+                  </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                  <input id="ai-chat-input" type="text"
+                         class="ai-form-input" style="flex:1;padding:9px 14px;"
+                         placeholder="输入消息，按 Enter 发送"
+                         onkeydown="if(event.key==='Enter')sendChatMessage()"
+                         disabled />
+                  <button onclick="sendChatMessage()" id="ai-send-btn"
+                          class="ai-btn ai-btn-primary" style="white-space:nowrap;padding:9px 20px;"
+                          disabled>发送</button>
+                  <button onclick="clearChat()" class="ai-btn ai-btn-ghost">清空</button>
+                </div>
+                <div class="ai-status-bar" style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
+                  <div style="display:flex;gap:8px;">
+                    <button id="ai-ws-connect-btn" class="ai-btn ai-btn-primary" style="padding:5px 14px;font-size:12px;" onclick="toggleChatWs()">连接</button>
+                    <span style="font-size:11px;color:var(--text-dim);line-height:28px;">WebSocket → <code id="ai-ws-hint">ws://127.0.0.1:8000/xiaozhi/v1/</code></span>
+                  </div>
+                  <span id="ai-conn-status" style="color:var(--text-dim);font-size:12px;">● 未连接</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div><!-- /ai-layout -->
+      </div>
+      <!-- /page-ai -->
+
+    </div><!-- /content -->
+  </div><!-- /main-wrap -->
+</div><!-- /layout -->
+
+<script>
+// ══════════════════════════════════════════════
+// 配置
+// ══════════════════════════════════════════════
+// 本地访问用这个：
+// const API_BASE = "http://127.0.0.1:8001";
+
+// 公网访问用这个（替换为cpolar给你的API隧道地址）：
+const API_BASE = "http://127.0.0.1:8001";  // TODO: 启动cpolar后替换为实际地址
+
+const AUTO_REFRESH = 5000;
+
+let currentDevice  = "001";
+let currentMinutes = 30;
+let currentPage    = "overview";
+let charts         = {};
+let mapInstance    = null;
+let mapMarker      = null;
+let mapTrail       = [];
+let mapPolyline    = null;
+let allAlerts      = [];
+let currentFilter  = "all";
+
+// ══════════════════════════════════════════════
+// 登录 / 退出
+// ══════════════════════════════════════════════
+const LOGIN_USER = "admin";
+const LOGIN_PASS = "12345";
+
+function doLogin() {
+  const user = document.getElementById("login-user").value.trim();
+  const pass = document.getElementById("login-pass").value;
+  const errEl = document.getElementById("login-err");
+
+  if (user === LOGIN_USER && pass === LOGIN_PASS) {
+    errEl.textContent = "";
+    document.getElementById("login-mask").style.display = "none";
+    // 记录登录时间
+    const t = new Date().toLocaleString("zh-CN");
+    document.getElementById("profile-login-time").textContent = t;
+    // 同步设备信息到个人中心
+    document.getElementById("profile-device").textContent = "设备 " + currentDevice;
+  } else {
+    errEl.textContent = "用户名或密码错误，请重试";
+    document.getElementById("login-pass").value = "";
+  }
+}
+
+function doLogout() {
+  closeProfile();
+  document.getElementById("login-user").value = "";
+  document.getElementById("login-pass").value = "";
+  document.getElementById("login-err").textContent = "";
+  document.getElementById("login-mask").style.display = "flex";
+}
+
+// 回车登录
+document.getElementById("login-pass").addEventListener("keydown", e => {
+  if (e.key === "Enter") doLogin();
+});
+document.getElementById("login-user").addEventListener("keydown", e => {
+  if (e.key === "Enter") document.getElementById("login-pass").focus();
+});
+
+// ══════════════════════════════════════════════
+// 个人中心弹窗
+// ══════════════════════════════════════════════
+function openProfile() {
+  document.getElementById("profile-device").textContent = "设备 " + currentDevice;
+  document.getElementById("profile-modal").classList.add("show");
+}
+
+function closeProfile() {
+  document.getElementById("profile-modal").classList.remove("show");
+}
+
+// 点击遮罩层关闭
+document.getElementById("profile-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("profile-modal")) closeProfile();
+});
+
+// ══════════════════════════════════════════════
+// 导航切换
+// ══════════════════════════════════════════════
+const pageTitles = {
+  overview: "数据概览",
+  map:      "实时位置",
+  video:    "视频监控",
+  alerts:   "告警历史",
+  ai:       "AI 语音助手",
+};
+
+document.querySelectorAll(".nav-item").forEach(item => {
+  item.addEventListener("click", () => {
+    const page = item.dataset.page;
+    switchPage(page);
+  });
+});
+
+function switchPage(page) {
+  currentPage = page;
+  document.querySelectorAll(".nav-item").forEach(n =>
+    n.classList.toggle("active", n.dataset.page === page)
+  );
+  document.querySelectorAll(".page").forEach(p =>
+    p.classList.toggle("active", p.id === "page-" + page)
+  );
+  document.getElementById("page-title").textContent = pageTitles[page] || page;
+
+  if (page === "map") {
+    if (!mapInstance) initMap();
+    else setTimeout(() => mapInstance.invalidateSize(), 100);
+  }
+
+  if (page === "overview") {
+    setTimeout(() => Object.values(charts).forEach(c => c.resize()), 50);
+  }
+}
+
+// ══════════════════════════════════════════════
+// ECharts 初始化
+// ══════════════════════════════════════════════
+function initChart(id, color, yMin, yMax, unit) {
+  const c = echarts.init(document.getElementById(id));
+  c.setOption({
+    grid: { top: 8, right: 12, bottom: 32, left: 48 },
+    xAxis: {
+      type: "time",
+      axisLabel: {
+        color: "#86909c", fontSize: 11,
+        formatter: v => {
+          const d = new Date(v);
+          return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+        }
+      },
+      axisLine:  { lineStyle: { color: "#e4e7ed" } },
+      splitLine: { show: false },
+    },
+    yAxis: {
+      type: "value", min: yMin, max: yMax,
+      axisLabel: { color: "#86909c", fontSize: 11, formatter: v => v + (unit || "") },
+      splitLine: { lineStyle: { color: "#f0f2f5", type: "dashed" } },
+    },
+    series: [{
+      type: "line", smooth: true, symbol: "none",
+      lineStyle: { color: color, width: 2 },
+      areaStyle: {
+        color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: color + "30" }, { offset: 1, color: color + "00" }] }
+      },
+      data: [],
+    }],
+    tooltip: {
+      trigger: "axis",
+      backgroundColor: "#fff",
+      borderColor: "#e4e7ed",
+      textStyle: { color: "#1d2129", fontSize: 12 },
+      formatter: params => {
+        const d   = new Date(params[0].value[0]);
+        const t   = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
+        return `${t}<br/><b>${params[0].value[1]}${unit || ""}</b>`;
+      }
+    },
+  });
+  window.addEventListener("resize", () => c.resize());
+  return c;
+}
+
+function setupCharts() {
+  charts.hr   = initChart("chart-hr",   "#165dff", 40, 120, " bpm");
+  charts.spo2 = initChart("chart-spo2", "#00b42a", 90, 100, "%");
+  charts.temp = initChart("chart-temp", "#ff7d00", 10,  40, "°C");
+  charts.humi = initChart("chart-humi", "#722ed1", 20, 100, "%");
+}
+
+// ══════════════════════════════════════════════
+// Leaflet 地图初始化
+// ══════════════════════════════════════════════
+function initMap() {
+  mapInstance = L.map("map-container").setView([39.9042, 116.4074], 15);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    maxZoom: 19,
+  }).addTo(mapInstance);
+
+  const icon = L.divIcon({
+    html: `<div style="
+      width:16px;height:16px;border-radius:50%;
+      background:#165dff;border:3px solid #fff;
+      box-shadow:0 0 0 3px #165dff55;
+    "></div>`,
+    iconSize: [16, 16], iconAnchor: [8, 8], className: ""
+  });
+
+  mapMarker   = L.marker([39.9042, 116.4074], { icon }).addTo(mapInstance);
+  mapPolyline = L.polyline([], { color: "#165dff", weight: 3, opacity: .6 }).addTo(mapInstance);
+}
+
+function updateMap(lat, lon, timeStr) {
+  if (!mapInstance) return;
+  const pos = [lat, lon];
+  mapMarker.setLatLng(pos);
+  mapMarker.bindPopup(`<b>老人当前位置</b><br>${timeStr}`);
+
+  mapTrail.push(pos);
+  if (mapTrail.length > 100) mapTrail.shift();
+  mapPolyline.setLatLngs(mapTrail);
+
+  if (mapTrail.length <= 3) mapInstance.setView(pos, 16);
+
+  document.getElementById("map-lat").textContent  = lat.toFixed(6);
+  document.getElementById("map-lon").textContent  = lon.toFixed(6);
+  document.getElementById("map-time").textContent = timeStr;
+}
+
+// 手动输入经纬度定位
+let manualMarker = null;
+function locateManual() {
+  const latStr = document.getElementById("manual-lat").value.trim();
+  const lonStr = document.getElementById("manual-lon").value.trim();
+  const msgEl  = document.getElementById("manual-gps-msg");
+
+  // 验证输入
+  const lat = parseFloat(latStr);
+  const lon = parseFloat(lonStr);
+
+  if (isNaN(lat) || isNaN(lon)) {
+    msgEl.textContent = "请输入有效的经纬度数值";
+    msgEl.className = "error";
+    return;
+  }
+
+  if (lat < -90 || lat > 90) {
+    msgEl.textContent = "纬度范围: -90 ~ 90";
+    msgEl.className = "error";
+    return;
+  }
+
+  if (lon < -180 || lon > 180) {
+    msgEl.textContent = "经度范围: -180 ~ 180";
+    msgEl.className = "error";
+    return;
+  }
+
+  // 确保地图已初始化
+  if (!mapInstance) initMap();
+
+  const pos = [lat, lon];
+
+  // 创建或更新手动标记（红色）
+  if (manualMarker) {
+    manualMarker.setLatLng(pos);
+  } else {
+    const redIcon = L.divIcon({
+      html: `<div style="
+        width:20px;height:20px;border-radius:50%;
+        background:#f53f3f;border:3px solid #fff;
+        box-shadow:0 0 0 3px #f53f3f55;
+      "></div>`,
+      iconSize: [20, 20], iconAnchor: [10, 10], className: ""
+    });
+    manualMarker = L.marker(pos, { icon: redIcon }).addTo(mapInstance);
+  }
+
+  // 设置弹窗
+  const now = new Date().toLocaleTimeString("zh-CN");
+  manualMarker.bindPopup(`<b>手动定位</b><br>纬度: ${lat.toFixed(6)}<br>经度: ${lon.toFixed(6)}<br>时间: ${now}`).openPopup();
+
+  // 移动地图视图
+  mapInstance.setView(pos, 17);
+
+  // 更新显示
+  document.getElementById("map-lat").textContent  = lat.toFixed(6);
+  document.getElementById("map-lon").textContent  = lon.toFixed(6);
+  document.getElementById("map-time").textContent = now + " (手动)";
+
+  msgEl.textContent = "定位成功";
+  msgEl.className = "";
+}
+
+// ══════════════════════════════════════════════
+// API 请求
+// ══════════════════════════════════════════════
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  return r.json();
+}
+
+function extract(data, field) {
+  return data
+    .filter(d => d.field === field)
+    .map(d => [new Date(d.time).getTime(), parseFloat(d.value.toFixed(2))]);
+}
+
+// ══════════════════════════════════════════════
+// 刷新：概览图表 + 状态卡片
+// ══════════════════════════════════════════════
+async function refreshOverview() {
+  const dev  = currentDevice;
+  const mins = currentMinutes;
+
+  const [hrD, envD, lightD, gasD, imuD, statusD] = await Promise.all([
+    fetchJSON(`${API_BASE}/api/heartrate/${dev}?minutes=${mins}`),
+    fetchJSON(`${API_BASE}/api/env/${dev}?minutes=${mins}`),
+    fetchJSON(`${API_BASE}/api/light/${dev}?minutes=${mins}`),
+    fetchJSON(`${API_BASE}/api/gas/${dev}?minutes=${mins}`),
+    fetchJSON(`${API_BASE}/api/imu/${dev}?minutes=${mins}`),
+    fetchJSON(`${API_BASE}/api/status/${dev}`),
+  ]);
+
+  // 心率（MAX30102 heartrate measurement，字段 heartrate）
+  const hrS = extract(hrD.data, "heartrate");
+  charts.hr.setOption({ series: [{ data: hrS }] });
+  if (hrS.length) {
+    const v = hrS.at(-1)[1];
+    setVal("val-hr", v, v < 50 || v > 100 ? "danger" : v < 60 || v > 90 ? "warn" : "good");
+  }
+
+  // 血氧（MAX30102 heartrate measurement，字段 spo2）
+  const spo2S = extract(hrD.data, "spo2");
+  charts.spo2.setOption({ series: [{ data: spo2S }] });
+  if (spo2S.length) {
+    const v = spo2S.at(-1)[1];
+    setVal("val-spo2", v, v < 95 ? "danger" : v < 97 ? "warn" : "good");
+  }
+
+  // 环境温湿度（BME280 env measurement）
+  const tempS = extract(envD.data, "temperature");
+  const humiS = extract(envD.data, "humidity");
+
+  // 光照强度（BH1750 light measurement）
+  const luxS  = extract(lightD.data, "lux");
+
+  // 气体传感器（MQ-4/MQ-7 gas measurement）
+  const mq4S  = extract(gasD.data, "mq4_mv");
+  const mq7S  = extract(gasD.data, "mq7_mv");
+
+  charts.temp.setOption({ series: [{ data: tempS }] });
+  charts.humi.setOption({ series: [{ data: humiS }] });
+  if (tempS.length) setVal("val-temp", tempS.at(-1)[1], "normal");
+  if (humiS.length) setVal("val-humi", humiS.at(-1)[1], "normal");
+  if (mq4S.length)  setVal("val-mq4",  mq4S.at(-1)[1],  "normal");
+  if (mq7S.length)  setVal("val-mq7",  mq7S.at(-1)[1],  "normal");
+  if (luxS.length)  setVal("val-lux",  luxS.at(-1)[1],  "normal");
+
+  // IMU 数据
+  const rollS    = extract(imuD.data, "roll");
+  const pitchS   = extract(imuD.data, "pitch");
+  const accmagS  = extract(imuD.data, "accel_mag");
+  const fallS    = extract(imuD.data, "fall_state");
+
+  if (rollS.length)   setVal("val-roll",   rollS.at(-1)[1],   "normal");
+  if (pitchS.length)  setVal("val-pitch",  pitchS.at(-1)[1],  "normal");
+  if (accmagS.length) setVal("val-accmag", accmagS.at(-1)[1], "normal");
+
+  // 跌倒状态解析
+  if (fallS.length) {
+    const fallVal = fallS.at(-1)[1];
+    const fallStates = ["正常", "冲击", "检查中", "已跌倒"];
+    const fallColors = ["good", "warn", "warn", "danger"];
+    setVal("val-fall", fallStates[fallVal] || "未知", fallColors[fallVal] || "normal");
+    document.getElementById("val-fall-desc").textContent = fallVal === 3 ? "请立即查看!" : "";
+  }
+
+  const dot  = document.getElementById("status-dot");
+  const text = document.getElementById("status-text");
+  if (statusD.online) {
+    dot.className = "dot online";
+    text.textContent = "在线";
+    setVal("val-status", "在线", "good");
+    if (statusD.battery != null) setVal("val-bat", Math.round(statusD.battery), statusD.battery < 20 ? "danger" : "normal");
+    if (statusD.time) document.getElementById("val-status-time").textContent = new Date(statusD.time).toLocaleTimeString("zh-CN");
+
+    // SD卡状态
+    if (statusD.sd != null) {
+      const sdOk = statusD.sd === 1;
+      setVal("val-sd", sdOk ? "正常" : "异常", sdOk ? "good" : "danger");
+      document.getElementById("val-sd-desc").textContent = sdOk ? "存储正常" : "请检查SD卡";
+    }
+
+    // 4G模块状态
+    if (statusD.lte != null) {
+      const lteOk = statusD.lte === 1;
+      setVal("val-lte", lteOk ? "已连接" : "未连接", lteOk ? "good" : "warn");
+      document.getElementById("val-lte-desc").textContent = lteOk ? "信号正常" : "使用WiFi";
+    }
+  } else {
+    dot.className = "dot offline";
+    text.textContent = "离线";
+    setVal("val-status", "离线", "danger");
+  }
+}
+
+// ══════════════════════════════════════════════
+// 刷新：GPS 位置
+// ══════════════════════════════════════════════
+async function refreshMap() {
+  const data = await fetchJSON(`${API_BASE}/api/location/${currentDevice}?minutes=5`);
+  const pts  = data.data || [];
+  if (!pts.length) return;
+
+  const latPts = pts.filter(d => d.field === "lat");
+  const lonPts = pts.filter(d => d.field === "lon");
+  if (!latPts.length || !lonPts.length) return;
+
+  const latLast = latPts.at(-1);
+  const lonLast = lonPts.at(-1);
+  updateMap(
+    parseFloat(latLast.value),
+    parseFloat(lonLast.value),
+    new Date(latLast.time).toLocaleTimeString("zh-CN")
+  );
+}
+
+// ══════════════════════════════════════════════
+// 刷新：告警列表
+// ══════════════════════════════════════════════
+async function refreshAlerts() {
+  const data = await fetchJSON(`${API_BASE}/api/alerts/${currentDevice}?minutes=1440`);
+
+  const seen = new Set();
+  allAlerts  = (data.data || []).filter(d => {
+    const k = `${d.time}_${d.alert_type}`;
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+
+  document.getElementById("nav-alert-count").textContent = allAlerts.length;
+  renderAlertTable();
+
+  const recentEl = document.getElementById("ai-recent-alerts");
+  const recent   = allAlerts.slice(0, 3);
+  recentEl.innerHTML = recent.length
+    ? recent.map(a => `<span class="ai-tag alert">${a.alert_type === "fall" ? "🆘跌倒" : "⚠️气体"} ${new Date(a.time).toLocaleTimeString("zh-CN")}</span>`).join("")
+    : `<span style="font-size:12px;color:var(--text-dim);">暂无</span>`;
+}
+
+function renderAlertTable() {
+  const tbody    = document.getElementById("alert-tbody");
+  const filtered = currentFilter === "all" ? allAlerts : allAlerts.filter(a => a.alert_type === currentFilter);
+
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="4" class="empty-tip">暂无告警记录</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.slice(0, 50).map(a => {
+    const typeName = a.alert_type === "fall" ? "跌倒告警" : "气体告警";
+    const val      = typeof a.value === "number" ? a.value.toFixed(3) : a.value;
+    return `<tr>
+      <td><span class="tag ${a.alert_type}">${typeName}</span></td>
+      <td>${new Date(a.time).toLocaleString("zh-CN")}</td>
+      <td>${a.device_id}</td>
+      <td style="color:var(--text-dim)">${a.field}: ${val}</td>
+    </tr>`;
+  }).join("");
+}
+
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentFilter = btn.dataset.type;
+    renderAlertTable();
+  });
+});
+
+// ══════════════════════════════════════════════
+// 视频流地址保存
+// ══════════════════════════════════════════════
+function saveStreamUrl() {
+  const url = document.getElementById("rtsp-url").value.trim();
+  if (!url) return;
+  document.getElementById("stream-url-display").textContent = url;
+  alert("地址已保存。\nRTSP 转 HLS 播放功能将在 K230 接入后实现。");
+}
+
+// ══════════════════════════════════════════════
+// 工具
+// ══════════════════════════════════════════════
+function setVal(id, value, level) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value;
+  el.className   = "stat-val " + (level || "normal");
+}
+
+// ══════════════════════════════════════════════
+// 时间范围按钮
+// ══════════════════════════════════════════════
+document.querySelectorAll(".range-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".range-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentMinutes = parseInt(btn.dataset.min);
+    refreshOverview();
+  });
+});
+
+document.getElementById("device-select").addEventListener("change", e => {
+  currentDevice = e.target.value;
+  document.getElementById("profile-device").textContent = "设备 " + currentDevice;
+  refresh();
+});
+
+// ══════════════════════════════════════════════
+// 全局刷新
+// ══════════════════════════════════════════════
+async function refresh() {
+  try {
+    const tasks = [refreshOverview(), refreshAlerts()];
+    if (currentPage === "map") tasks.push(refreshMap());
+    await Promise.all(tasks);
+    document.getElementById("last-update").textContent =
+      new Date().toLocaleTimeString("zh-CN");
+  } catch(e) {
+    console.error("刷新失败:", e);
+  }
+}
+
+// ══════════════════════════════════════════════
+// 启动
+// ══════════════════════════════════════════════
+setupCharts();
+refresh();
+setInterval(refresh, AUTO_REFRESH);
+
+// ══════════════════════════════════════════════
+// AI 助手模块 — 对应 xiaozhi-esp32-server 后端
+// ══════════════════════════════════════════════
+
+// 默认角色设定模板（关爱独居老人场景）
+const DEFAULT_PERSONA = `你是"守护者"，一位温柔耐心的 AI 语音助手，专门陪伴独居老人。
+[核心特征]
+- 说话简洁清晰，语速适中，避免使用专业术语
+- 主动关心老人的饮食、作息和身体状况
+- 遇到紧急情况（跌倒、胸痛等）立即提醒联系家人或拨打急救电话
+[交互原则]
+- 回复控制在 2-3 句话，不长篇大论
+- 遇到老人重复提问，耐心回答，不表示不耐烦
+- 每天早晨主动问候，提醒服药和活动`;
+
+// 获取服务器 WebSocket 地址
+function getWsBase() {
+  return (document.getElementById("ai-server-url").value || "ws://127.0.0.1:8000").replace(/\/$/, "");
+}
+
+// ── 折叠/展开 ──────────────────────────────────
+function toggleSection(id) {
+  const bd  = document.getElementById(id);
+  const btn = document.getElementById(id + "-btn");
+  const collapsed = bd.classList.toggle("collapsed");
+  btn.textContent = collapsed ? "▼ 展开" : "▲ 收起";
+}
+
+// ── 服务器连接检测 ─────────────────────────────
+async function checkServerStatus() {
+  const statusEl = document.getElementById("ai-llm-status");
+  const wsBase   = getWsBase();
+  const wsUrl    = wsBase.replace(/^http/, "ws") + "/xiaozhi/v1/";
+
+  // 同步更新 WebSocket 提示
+  document.getElementById("ai-ws-hint").textContent = wsUrl;
+
+  statusEl.textContent = "检测中...";
+  statusEl.style.color = "var(--text-dim)";
+
+  try {
+    await new Promise((resolve, reject) => {
+      const ws = new WebSocket(wsUrl);
+      const timer = setTimeout(() => { ws.close(); reject(new Error("超时")); }, 3000);
+      ws.onopen = () => { clearTimeout(timer); ws.close(); resolve(); };
+      ws.onerror = () => { clearTimeout(timer); reject(new Error("无法连接")); };
+    });
+    statusEl.textContent = "● 服务器在线 ✅";
+    statusEl.style.color = "var(--green)";
+  } catch(e) {
+    statusEl.textContent = "● 连接失败: " + e.message;
+    statusEl.style.color = "var(--red)";
+  }
+}
+
+// ── TTS 参数（PaddleSpeechTTS）─────────────────
+function onTtsParamChange() {
+  const speed  = parseFloat(document.getElementById("tts-speed").value).toFixed(2);
+  const volume = parseFloat(document.getElementById("tts-volume").value).toFixed(2);
+  document.getElementById("tts-speed-val").textContent  = speed;
+  document.getElementById("tts-volume-val").textContent = volume;
+}
+
+async function loadTtsConfig() {
+  const status = document.getElementById("save-tts-status");
+  status.textContent = "读取中…";
+  status.className   = "ai-save-status";
+  try {
+    const res = await fetch("http://localhost:8001/api/tts-config", { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const d = await res.json();
+    document.getElementById("tts-spk-id").value  = d.spk_id ?? 0;
+    document.getElementById("tts-speed").value   = d.speed  ?? 1.0;
+    document.getElementById("tts-volume").value  = d.volume ?? 1.0;
+    onTtsParamChange();
+    status.textContent = "✓ 已从服务器读取";
+    status.className   = "ai-save-status ok";
+  } catch (e) {
+    status.textContent = "读取失败: " + e.message;
+    status.className   = "ai-save-status err";
+  }
+  setTimeout(() => { status.textContent = ""; }, 3000);
+}
+
+async function saveTtsConfig() {
+  const status = document.getElementById("save-tts-status");
+  const btn    = document.getElementById("tts-save-btn");
+  const spk_id = parseInt(document.getElementById("tts-spk-id").value, 10);
+  const speed  = parseFloat(document.getElementById("tts-speed").value);
+  const volume = parseFloat(document.getElementById("tts-volume").value);
+  status.textContent = "保存中…";
+  status.className   = "ai-save-status";
+  btn.disabled = true;
+  try {
+    const res = await fetch("http://localhost:8001/api/tts-config", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ spk_id, speed, volume }),
+      signal:  AbortSignal.timeout(5000)
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.detail || "HTTP " + res.status);
+    status.textContent = "✓ 已保存，重启 xiaozhi-server 后生效";
+    status.className   = "ai-save-status ok";
+  } catch (e) {
+    status.textContent = "保存失败: " + e.message;
+    status.className   = "ai-save-status err";
+  }
+  btn.disabled = false;
+  setTimeout(() => { status.textContent = ""; }, 4000);
+}
+
+// ── 角色性格：加载默认模板 ─────────────────────
+function loadDefaultPersona() {
+  document.getElementById("ai-persona-input").value = DEFAULT_PERSONA;
+  const s = document.getElementById("save-persona-status");
+  s.textContent = "已加载默认模板";
+  s.className   = "ai-save-status";
+  setTimeout(() => { s.textContent = ""; }, 2000);
+}
+
+// ── 角色性格：复制 ─────────────────────────────
+function copyPersona() {
+  const text   = document.getElementById("ai-persona-input").value;
+  const status = document.getElementById("save-persona-status");
+  if (!text.trim()) {
+    loadDefaultPersona();
+    return;
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    status.textContent = "✓ 已复制，粘贴到 data/.config.yaml 的 prompt 字段";
+    status.className   = "ai-save-status ok";
+    setTimeout(() => { status.textContent = ""; }, 3000);
+  });
+}
+
+// ── 记忆管理（本地文件记忆不可远程读取，静默处理）──
+async function fetchMemory() {
+  const hint = document.getElementById("memory-nomem-hint");
+  try {
+    const wsBase  = getWsBase();
+    const httpUrl = wsBase.replace(/^ws/, "http");
+    const res = await fetch(httpUrl + `/ai/memory?device_id=${currentDevice}`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const d = await res.json();
+    if (hint) hint.style.display = "none";
+    renderMemory(d.memory || []);
+  } catch(e) {
+    // 接口不存在时显示 nomem 提示
+    if (hint) hint.style.display = "block";
+    renderMemory([]);
+  }
+}
+
+function renderMemory(list) {
+  const el    = document.getElementById("memory-list");
+  const badge = document.getElementById("memory-count-badge");
+  if (badge) badge.textContent = list.length ? list.length + " 条" : "";
+  if (!list.length) {
+    el.innerHTML = `<div class="memory-empty">暂无记忆 —— 启用记忆模块并对话后会自动积累</div>`;
+    return;
+  }
+  const reversed = [...list].reverse();
+  el.innerHTML = reversed.map((m, i) => `
+    <div class="memory-item">
+      <span class="memory-idx" style="font-size:10px;color:var(--text-dim);margin-right:6px;flex-shrink:0;">${list.length - i}</span>
+      <span class="memory-item-text">${escHtml(m)}</span>
+    </div>`).join("");
+}
+
+async function clearMemory() {
+  if (!confirm("确认清空所有记忆？")) return;
+  try {
+    const wsBase  = getWsBase();
+    const httpUrl = wsBase.replace(/^ws/, "http");
+    await fetch(httpUrl + `/ai/memory?device_id=${currentDevice}`, { method: "DELETE" });
+    renderMemory([]);
+  } catch(e) { alert("清空失败: " + e.message); }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+// ══════════════════════════════════════════════
+// 对话测试 — 真实 WebSocket
+// ══════════════════════════════════════════════
+let chatWs       = null;   // WebSocket 实例
+let chatSession  = null;   // session_id
+let chatDeviceId = null;   // 模拟设备 ID
+
+function _genId(len = 8) {
+  return Array.from(crypto.getRandomValues(new Uint8Array(len)))
+    .map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function _setChatConnected(connected) {
+  const btn    = document.getElementById("ai-ws-connect-btn");
+  const status = document.getElementById("ai-conn-status");
+  const input  = document.getElementById("ai-chat-input");
+  const send   = document.getElementById("ai-send-btn");
+
+  if (connected) {
+    btn.textContent    = "断开";
+    btn.className      = "ai-btn ai-btn-danger";
+    status.textContent = "● 已连接";
+    status.style.color = "var(--green)";
+    input.disabled     = false;
+    send.disabled      = false;
+    input.focus();
+  } else {
+    btn.textContent    = "连接";
+    btn.className      = "ai-btn ai-btn-primary";
+    status.textContent = "● 未连接";
+    status.style.color = "var(--text-dim)";
+    input.disabled     = true;
+    send.disabled      = true;
+  }
+}
+
+function toggleChatWs() {
+  if (chatWs && chatWs.readyState <= 1) {
+    chatWs.close();
+    chatWs = null;
+    return;
+  }
+
+  chatDeviceId = _genId(6).toUpperCase();
+  chatSession  = null;
+
+  const wsBase   = getWsBase();
+  const wsUrl    = wsBase.replace(/^http/, "ws").replace(/\/$/, "") + "/xiaozhi/v1/?device-id=" + chatDeviceId;
+  document.getElementById("ai-ws-hint").textContent = wsUrl;
+
+  const status = document.getElementById("ai-conn-status");
+  status.textContent = "● 连接中...";
+  status.style.color = "var(--text-dim)";
+
+  try {
+    chatWs = new WebSocket(wsUrl);
+  } catch(e) {
+    appendChatBubble("system", "WebSocket 创建失败: " + e.message);
+    return;
+  }
+
+  chatWs.binaryType = "arraybuffer";
+
+  chatWs.onopen = () => {
+    _setChatConnected(true);
+    // 发送 hello 握手
+    chatWs.send(JSON.stringify({
+      type: "hello",
+      version: 3,
+      transport: "websocket",
+      audio_params: { format: "opus", sample_rate: 16000, channels: 1, frame_duration: 60 }
+    }));
+  };
+
+  chatWs.onmessage = (ev) => {
+    if (ev.data instanceof ArrayBuffer) return; // 忽略音频帧
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+
+    if (msg.type === "hello") {
+      chatSession = msg.session_id || chatSession;
+      appendChatBubble("system", "握手成功，session: " + (chatSession || "—"));
+      return;
+    }
+    if (msg.type === "stt") {
+      // 回显服务端 STT 结果（用于确认发送成功）
+      return;
+    }
+    if (msg.type === "llm" && msg.emotion) {
+      return; // emotion 消息静默
+    }
+    if (msg.type === "tts") {
+      if (msg.state === "sentence_start" && msg.text) {
+        appendChatBubble("ai", msg.text);
+      }
+      return;
+    }
+  };
+
+  chatWs.onclose = () => {
+    chatWs = null;
+    _setChatConnected(false);
+    appendChatBubble("system", "连接已断开");
+  };
+
+  chatWs.onerror = () => {
+    _setChatConnected(false);
+    appendChatBubble("system", "WebSocket 出错，请确认服务器地址和端口");
+    chatWs = null;
+  };
+}
+
+// ── 发送文字消息 ───────────────────────────────
+function sendChatMessage() {
+  if (!chatWs || chatWs.readyState !== 1) return;
+  const input = document.getElementById("ai-chat-input");
+  const text  = input.value.trim();
+  if (!text) return;
+
+  input.value = "";
+  appendChatBubble("user", text);
+
+  // 模拟 listen 开始 → STT 文本 → listen 停止
+  chatWs.send(JSON.stringify({
+    type: "listen", state: "start",
+    mode: "manual", session_id: chatSession
+  }));
+  chatWs.send(JSON.stringify({
+    type: "listen", state: "detect",
+    text: text, session_id: chatSession
+  }));
+  chatWs.send(JSON.stringify({
+    type: "listen", state: "stop",
+    session_id: chatSession
+  }));
+}
+
+// ── 对话气泡 ───────────────────────────────────
+function appendChatBubble(role, text) {
+  const log = document.getElementById("ai-chat-log");
+  // 移除空状态提示
+  const hint = log.querySelector("div[style*='text-align:center']");
+  if (hint) hint.remove();
+
+  const wrap   = document.createElement("div");
+  const isUser = role === "user";
+  const isSys  = role === "system";
+
+  if (isSys) {
+    wrap.style.cssText = "text-align:center;margin:4px 0;";
+    wrap.innerHTML = `<span style="font-size:11px;color:var(--text-dim);background:var(--surface);padding:2px 10px;border-radius:10px;">${escHtml(text)}</span>`;
+    log.appendChild(wrap);
+    log.scrollTop = log.scrollHeight;
+    return;
+  }
+
+  wrap.style.cssText = `display:flex;flex-direction:${isUser ? "row-reverse" : "row"};gap:8px;align-items:flex-end;margin:4px 0;`;
+
+  const bubble = document.createElement("div");
+  bubble.style.cssText = `
+    max-width:72%;padding:9px 13px;
+    border-radius:${isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px"};
+    background:${isUser ? "var(--accent)" : "var(--surface)"};
+    color:${isUser ? "#fff" : "var(--text)"};
+    font-size:13px;line-height:1.6;box-shadow:var(--shadow);
+  `;
+  bubble.textContent = text;
+
+  const timeEl = document.createElement("div");
+  timeEl.style.cssText = "font-size:10px;color:var(--text-dim);padding-bottom:2px;flex-shrink:0;";
+  timeEl.textContent = new Date().toLocaleTimeString("zh-CN", {hour:"2-digit", minute:"2-digit"});
+
+  wrap.appendChild(bubble);
+  wrap.appendChild(timeEl);
+  log.appendChild(wrap);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearChat() {
+  document.getElementById("ai-chat-log").innerHTML =
+    `<div style="text-align:center;color:var(--text-dim);font-size:12px;padding:20px 0;">点击「连接」后可向服务器发送文字消息测试 AI 对话</div>`;
+}
+
+// ── 进入 AI 页面时初始化 ────────────────────────
+document.querySelector(".nav-item[data-page='ai']").addEventListener("click", () => {
+  // 加载默认角色模板（若为空）
+  const ta = document.getElementById("ai-persona-input");
+  if (!ta.value) ta.value = DEFAULT_PERSONA;
+  // 从服务器读取 TTS 参数
+  loadTtsConfig();
+  // 同步 WebSocket 地址显示
+  const wsBase = getWsBase();
+  document.getElementById("ai-ws-hint").textContent =
+    wsBase.replace(/^http/, "ws").replace(/\/$/, "") + "/xiaozhi/v1/";
+  // 尝试拉取记忆
+  fetchMemory();
+});
+
+// 兼容旧函数名
+function fetchAiConfig()  { checkServerStatus(); }
+function fetchLLMStatus() { checkServerStatus(); }
+function switchLLM()      { /* 不再支持热切换 */ }
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+selected_module:
+  VAD: SileroVAD
+  ASR: FunASR
+  LLM: AliyunLLM
+  TTS: IndexStreamTTS
+  Memory: nomem
+  Intent: function_call
+LLM:
+  DeepSeekLLM:
+    type: openai
+    model_name: deepseek-chat
+    url: https://api.deepseek.com
+    api_key: your_deepseek_api_key
+  AliyunLLM:
+    type: openai
+    model_name: qwen-flash-2025-07-28
+    url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: your_aliyun_api_key
+TTS:
+  IndexStreamTTS:
+    type: index_stream
+    api_url: http://127.0.0.1:11996/tts
+    audio_format: "pcm"
+    voice: "nahida"
+    output_dir: tmp/
+  AliBLTTS:
+    type: alibl_stream
+    api_key: your_aliyun_api_key
+    model: cosyvoice-v2
+    voice: longcheng_v2
+    output_dir: tmp/
+ASR:
+  FunASR:
+    type: fun_local
+    model_dir: models/SenseVoiceSmall
+    output_dir: tmp/
+  AliyunBLStreamASR:
+    type: aliyunbl_stream
+    api_key: your_aliyun_api_key
+    model: paraformer-realtime-v2
+    format: pcm
+    sample_rate: 16000
+    output_dir: tmp/
+prompt: '你是 Guardian，独居老人的贴心智能助手。主要职责是监护老人健康与安全，同时也能陪老人聊天。
+
+  语气温和亲切，称呼老人为"您"，不使用任何Markdown符号。
+
+  '
+server:
+  ip: 0.0.0.0
+  port: 8000
+  websocket: ws://YOUR_SERVER_IP:8000/xiaozhi/v1/
+Intent:
+  function_call:
+    type: function_call
+    functions:
+    - get_weather
+    - get_news_from_newsnow
+    - play_music
+plugins:
+  get_weather:
+    api_host: your_qweather_api_host
+    api_key: your_qweather_api_key
+    default_location: 沈阳

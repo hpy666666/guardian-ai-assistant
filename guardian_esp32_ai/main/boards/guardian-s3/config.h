@@ -1,0 +1,27 @@
+// Guardian ESP32-S3 Board Config
+// Hardware:
+//   MIC (INMP441):  WS=GPIO4, SCK=GPIO5, DIN=GPIO6
+//   SPK (MAX98357A): DOUT=GPIO10, BCLK=GPIO11, LRCK=GPIO12
+//   BOOT button:    GPIO0
+//   Built-in LED:   GPIO48
+
+#pragma once
+
+// ── I2S Simplex mode (独立 MIC + SPK，无 I2C codec 芯片) ──
+#define AUDIO_I2S_METHOD_SIMPLEX
+
+// MIC (INMP441): I2S 接收
+#define AUDIO_I2S_MIC_GPIO_WS   GPIO_NUM_4
+#define AUDIO_I2S_MIC_GPIO_SCK  GPIO_NUM_5
+#define AUDIO_I2S_MIC_GPIO_DIN  GPIO_NUM_6
+
+// SPK (MAX98357A): I2S 发送
+#define AUDIO_I2S_SPK_GPIO_DOUT GPIO_NUM_10
+#define AUDIO_I2S_SPK_GPIO_BCLK GPIO_NUM_11
+#define AUDIO_I2S_SPK_GPIO_LRCK GPIO_NUM_12
+
+// 按键
+#define BOOT_BUTTON_GPIO        GPIO_NUM_0
+
+// LED
+#define BUILTIN_LED_GPIO        GPIO_NUM_48
