@@ -137,6 +137,11 @@ NoAudioCodecSimplex::NoAudioCodecSimplex(int input_sample_rate, int output_sampl
     std_cfg.gpio_cfg.din = mic_din;
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle_, &std_cfg));
     ESP_LOGI(TAG, "Simplex channels created");
+#ifdef CONFIG_USE_DEVICE_AEC
+    input_reference_ = true;
+    input_channels_  = 2; // interleaved: [mic, ref]
+    ESP_LOGI(TAG, "AEC reference channel enabled (input_channels=2)");
+#endif
 }
 
 NoAudioCodecSimplex::NoAudioCodecSimplex(int input_sample_rate, int output_sample_rate, gpio_num_t spk_bclk, gpio_num_t spk_ws, gpio_num_t spk_dout, i2s_std_slot_mask_t spk_slot_mask, gpio_num_t mic_sck, gpio_num_t mic_ws, gpio_num_t mic_din, i2s_std_slot_mask_t mic_slot_mask) {
@@ -203,6 +208,11 @@ NoAudioCodecSimplex::NoAudioCodecSimplex(int input_sample_rate, int output_sampl
     std_cfg.gpio_cfg.din = mic_din;
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(rx_handle_, &std_cfg));
     ESP_LOGI(TAG, "Simplex channels created");
+#ifdef CONFIG_USE_DEVICE_AEC
+    input_reference_ = true;
+    input_channels_  = 2; // interleaved: [mic, ref]
+    ESP_LOGI(TAG, "AEC reference channel enabled (input_channels=2)");
+#endif
 }
 
 int NoAudioCodec::Write(const int16_t* data, int samples) {
@@ -223,10 +233,55 @@ int NoAudioCodec::Write(const int16_t* data, int samples) {
 
     size_t bytes_written;
     ESP_ERROR_CHECK(i2s_channel_write(tx_handle_, buffer.data(), samples * sizeof(int32_t), &bytes_written, portMAX_DELAY));
+
+#ifdef CONFIG_USE_DEVICE_AEC
+    // Shadow the speaker PCM (pre-volume int16) into the reference ring buffer
+    // so that Read() can supply it as the AEC reference channel.
+    // We use the original int16 data (pre-volume) which is the "clean" signal
+    // known to the echo canceller.
+    for (int i = 0; i < samples; i++) {
+        ref_buf_.push_back(data[i]);
+    }
+    // Trim to max size to prevent unbounded growth
+    while (ref_buf_.size() > kRefBufMaxSamples) {
+        ref_buf_.pop_front();
+    }
+#endif
+
     return bytes_written / sizeof(int32_t);
 }
 
 int NoAudioCodec::Read(int16_t* dest, int samples) {
+#ifdef CONFIG_USE_DEVICE_AEC
+    // When AEC is active, Read() must return interleaved [mic, ref] pairs.
+    // `samples` here is the total interleaved count (= frame_samples * 2).
+    // We read frame_samples physical mic frames from I2S, then interleave
+    // with reference samples from the ring buffer.
+    int mic_samples = samples / 2; // input_channels_ == 2
+
+    size_t bytes_read;
+    std::vector<int32_t> bit32_buffer(mic_samples);
+    if (i2s_channel_read(rx_handle_, bit32_buffer.data(), mic_samples * sizeof(int32_t), &bytes_read, portMAX_DELAY) != ESP_OK) {
+        ESP_LOGE(TAG, "Read Failed!");
+        return 0;
+    }
+    mic_samples = bytes_read / sizeof(int32_t);
+
+    std::lock_guard<std::mutex> lock(data_if_mutex_);
+    for (int i = 0; i < mic_samples; i++) {
+        // Mic sample
+        int32_t value = bit32_buffer[i] >> 12;
+        dest[i * 2]     = (value > INT16_MAX) ? INT16_MAX : (value < -INT16_MAX) ? -INT16_MAX : (int16_t)value;
+        // Reference sample (speaker playback) - use 0 if buffer is empty
+        if (!ref_buf_.empty()) {
+            dest[i * 2 + 1] = ref_buf_.front();
+            ref_buf_.pop_front();
+        } else {
+            dest[i * 2 + 1] = 0;
+        }
+    }
+    return mic_samples * 2; // total interleaved samples returned
+#else
     size_t bytes_read;
 
     std::vector<int32_t> bit32_buffer(samples);
@@ -241,4 +296,5 @@ int NoAudioCodec::Read(int16_t* dest, int samples) {
         dest[i] = (value > INT16_MAX) ? INT16_MAX : (value < -INT16_MAX) ? -INT16_MAX : (int16_t)value;
     }
     return samples;
+#endif
 }

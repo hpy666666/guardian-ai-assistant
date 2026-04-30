@@ -38,6 +38,7 @@
 #include "data_logger.h"
 #include "esp_comm.h"
 /* #include "lte_driver.h" */  /* DISABLED: Air780E AT firmware lacks MQTT TLS support */
+#include "ws2812b.h"
 
 #define DBG_TAG "main"
 #define DBG_LVL DBG_LOG
@@ -197,6 +198,27 @@ int main(void)
 {
     rt_bool_t oled_ok = RT_FALSE;
 
+    /* --- WS2812B LED strip --- */
+    if (ws2812b_init() != RT_EOK)
+    {
+        LOG_E("WS2812B init failed (PB1=TIM3_CH4)");
+    }
+    else
+    {
+        /* Run boot animation in a separate thread so main() continues initializing
+         * sensors and OLED without waiting for the ~4s chase sequence to finish. */
+        rt_thread_t chase_tid = rt_thread_create("led_chase",
+                                                 (void (*)(void *))ws2812b_effect_chase_startup,
+                                                 (void *)40,        /* speed_ms as parameter */
+                                                 512,
+                                                 25,                /* low priority: won't starve sensors */
+                                                 5);
+        if (chase_tid != RT_NULL)
+            rt_thread_startup(chase_tid);
+        else
+            LOG_W("Failed to create led_chase thread, skipping boot animation");
+    }
+
     /* --- OLED SSD1306 display --- */
     if (oled_init() == RT_EOK)
     {
@@ -224,8 +246,7 @@ int main(void)
     /* --- MPU6050: accelerometer + gyroscope --- */
     if (mpu6050_init() != RT_EOK)
         LOG_E("MPU6050 init failed (PB8=SCL, PB9=SDA, AD0=GND)");
-    else
-        mpu6050_calibrate_gyro();  /* Calibrate gyro on startup */
+    /* Gyro calibration runs automatically in background thread "mpu_cal" (prio 24) */
 
     /* --- MQ-4 & MQ-7: gas sensors --- */
     if (mq_gas_init() != RT_EOK)

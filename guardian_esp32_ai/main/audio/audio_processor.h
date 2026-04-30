@@ -7,11 +7,20 @@
 
 #include "audio_codec.h"
 
+#ifdef CONFIG_USE_AUDIO_PROCESSOR
+#include <esp_afe_sr_models.h>
+#else
+// When AFE is disabled, provide a dummy typedef so the interface compiles
+// without pulling in esp-sr headers.
+typedef struct srmodel_list_s srmodel_list_t;
+#endif
+
 class AudioProcessor {
 public:
     virtual ~AudioProcessor() = default;
-    
-    virtual void Initialize(AudioCodec* codec, int frame_duration_ms) = 0;
+
+    virtual void Initialize(AudioCodec* codec, int frame_duration_ms,
+                            srmodel_list_t* models_list = nullptr) = 0;
     virtual void Feed(std::vector<int16_t>&& data) = 0;
     virtual void Start() = 0;
     virtual void Stop() = 0;

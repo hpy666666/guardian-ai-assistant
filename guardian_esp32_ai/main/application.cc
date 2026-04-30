@@ -57,6 +57,8 @@ void Application::AbortSpeaking(AbortReason reason) {
     }
     audio_service_.ResetDecoder();
     SetDeviceState(kDeviceStateIdle);
+    // Re-enable wake word so the device is ready for a new trigger
+    audio_service_.EnableWakeWord(true);
 }
 
 void Application::Reboot() {
@@ -104,6 +106,8 @@ void Application::StopListening() {
         audio_service_.EnableVoiceProcessing(false);
         protocol_->SendStopListening();
         SetDeviceState(kDeviceStateIdle);
+        // Re-enable wake word so device is ready for next hands-free trigger
+        audio_service_.EnableWakeWord(true);
         ESP_LOGI(TAG, "Listening stopped");
     });
 }
@@ -172,6 +176,8 @@ void Application::Start() {
                             vTaskDelay(pdMS_TO_TICKS(20));
                         }
                         SetDeviceState(kDeviceStateIdle);
+                        // Re-enable wake word after TTS finishes
+                        audio_service_.EnableWakeWord(true);
                     });
                 }
             }
@@ -216,7 +222,11 @@ void Application::Start() {
     audio_cbs.on_send_queue_available = [this]() {
         xEventGroupSetBits(event_group_, MAIN_EVENT_SEND_AUDIO);
     };
-    audio_cbs.on_wake_word_detected = nullptr;  // 无唤醒词
+    audio_cbs.on_wake_word_detected = [this](const std::string& wake_word) {
+        ESP_LOGI(TAG, "Wake word: %s", wake_word.c_str());
+        last_wake_word_ = wake_word;  // 保存，供主循环发送 detect 消息
+        xEventGroupSetBits(event_group_, MAIN_EVENT_WAKE_WORD_DETECTED);
+    };
     audio_cbs.on_vad_change = [this](bool speaking) {
         if (speaking && device_state_ == kDeviceStateListening &&
             listening_mode_ == kListeningModeAutoStop) {
@@ -242,7 +252,7 @@ void Application::MainEventLoop() {
     while (true) {
         EventBits_t bits = xEventGroupWaitBits(
             event_group_,
-            MAIN_EVENT_SCHEDULE | MAIN_EVENT_SEND_AUDIO,
+            MAIN_EVENT_SCHEDULE | MAIN_EVENT_SEND_AUDIO | MAIN_EVENT_WAKE_WORD_DETECTED,
             pdTRUE, pdFALSE,
             pdMS_TO_TICKS(100)
         );
@@ -256,6 +266,19 @@ void Application::MainEventLoop() {
             }
             for (auto& task : tasks) {
                 task();
+            }
+        }
+
+        // 唤醒词触发：自动开始监听（仅在空闲状态）
+        if (bits & MAIN_EVENT_WAKE_WORD_DETECTED) {
+            if (device_state_ == kDeviceStateIdle) {
+                // 先关闭唤醒词检测，避免对话中重复触发
+                audio_service_.EnableWakeWord(false);
+                // 通知服务器是唤醒词触发（detect 消息必须在 start 之前发送）
+                if (protocol_->IsAudioChannelOpened()) {
+                    protocol_->SendWakeWordDetected(last_wake_word_);
+                }
+                StartListening();
             }
         }
 

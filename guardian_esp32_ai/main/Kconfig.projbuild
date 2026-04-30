@@ -22,6 +22,32 @@ config GUARDIAN_WS_VERSION
     help
         Protocol version: 1=raw Opus, 2=BinaryProtocol2, 3=BinaryProtocol3
 
+config USE_AUDIO_PROCESSOR
+    bool "Enable Audio Noise Reduction (AFE: VAD + NS)"
+    default y
+    depends on IDF_TARGET_ESP32S3 && SPIRAM
+    help
+        Enable ESP-SR AFE audio front-end (VAD + neural network noise suppression).
+        Requires ESP32-S3 with PSRAM.
+
+config USE_DEVICE_AEC
+    bool "Enable Device-Side AEC (requires reference channel)"
+    default n
+    depends on USE_AUDIO_PROCESSOR
+    help
+        Enable acoustic echo cancellation using the speaker playback reference signal.
+        Requires the audio codec to supply a reference channel (input_reference() == true).
+
+config USE_AFE_WAKE_WORD
+    bool "Enable AFE Wake Word Detection (requires ESP32-S3 + PSRAM)"
+    default n
+    depends on USE_AUDIO_PROCESSOR
+    help
+        Enable hands-free wake word detection using ESP-SR wakenet inside the AFE
+        pipeline. Requires ESP32-S3 with PSRAM and a wakenet model in the 'model'
+        SPIFFS partition (compiled in by idf_component.yml esp-sr dependency).
+        When detected the device automatically starts listening.
+
 endmenu
 
 menu "Sensor Gateway (UART -> MQTT)"

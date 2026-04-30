@@ -1,0 +1,4 @@
+resemblyzer
+fastapi
+uvicorn[standard]
+numpy

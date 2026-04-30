@@ -131,7 +131,7 @@ extern "C"
  */
 
 /*#define BSP_USING_SPI1*/
-#define BSP_USING_SPI2
+/*#define BSP_USING_SPI2*/  /* Disabled: SD card switched to onboard SDIO */
 /*#define BSP_USING_SPI3*/
 
 /*-------------------------- SPI CONFIG END --------------------------*/
@@ -281,6 +281,7 @@ extern "C"
  */
 
 /*#define BSP_USING_SDIO*/
+#define BSP_USING_SDIO
 
 /*-------------------------- SDIO CONFIG END --------------------------*/
 

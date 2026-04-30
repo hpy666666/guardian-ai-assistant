@@ -44,7 +44,7 @@ public:
                 last_state = current;
                 vTaskDelay(pdMS_TO_TICKS(50));
             }
-        }, "boot_btn", 2048, this, 5, nullptr);
+        }, "boot_btn", 4096, this, 5, nullptr);
     }
 
     virtual AudioCodec* GetAudioCodec() override {

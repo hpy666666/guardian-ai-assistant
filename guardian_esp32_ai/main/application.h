@@ -59,6 +59,7 @@ private:
     std::string last_error_message_;
     AudioService audio_service_;
     bool aborted_ = false;
+    std::string last_wake_word_;  // 保存唤醒词字符串，供主循环发送 detect 消息
 
     TaskHandle_t main_event_loop_task_handle_ = nullptr;
 };

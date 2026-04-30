@@ -465,6 +465,30 @@ rt_err_t mpu6050_init(void)
     }
     rt_thread_startup(tid);
 
+    /* Run gyro calibration in a background thread so mpu6050_init() returns
+     * immediately and does not block main().
+     *
+     * Priority 24 (lower than everything else): the calibration loop only does
+     * I2C reads + mdelay, it will naturally yield during each mdelay(10).
+     * The sampling thread (prio 15) keeps running while calibration is in
+     * progress — for the first ~1 s the gyro offsets are 0, which is fine
+     * because the complementary filter needs a few cycles to settle anyway.
+     *
+     * Float writes to s_gyro_offset_x/y/z are single-instruction on the
+     * Cortex-M4 FPU, so no mutex is needed for the offset update itself. */
+    {
+        rt_thread_t cal_tid = rt_thread_create("mpu_cal",
+                                               (void (*)(void *))mpu6050_calibrate_gyro,
+                                               RT_NULL,
+                                               1024,
+                                               24,
+                                               5);
+        if (cal_tid != RT_NULL)
+            rt_thread_startup(cal_tid);
+        else
+            LOG_W("Failed to create calibration thread, gyro offsets will be zero");
+    }
+
     s_initialized = RT_TRUE;
     LOG_I("init OK — I2C addr 0x%02X, accel ±2g, gyro ±250°/s", MPU6050_I2C_ADDR);
 

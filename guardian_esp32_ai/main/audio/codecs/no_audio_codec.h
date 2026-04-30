@@ -6,6 +6,8 @@
 #include <driver/gpio.h>
 #include <driver/i2s_pdm.h>
 #include <mutex>
+#include <deque>
+#include <vector>
 
 class NoAudioCodec : public AudioCodec {
 protected:
@@ -13,6 +15,13 @@ protected:
 
     virtual int Write(const int16_t* data, int samples) override;
     virtual int Read(int16_t* dest, int samples) override;
+
+#ifdef CONFIG_USE_DEVICE_AEC
+    // Ring buffer holding recent speaker PCM for AEC reference.
+    // Protected by data_if_mutex_ (Write acquires it, Read acquires it too).
+    std::deque<int16_t> ref_buf_;
+    static constexpr size_t kRefBufMaxSamples = 16000; // ~1 s @ 16 kHz
+#endif
 
 public:
     virtual ~NoAudioCodec();

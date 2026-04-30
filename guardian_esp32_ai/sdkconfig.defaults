@@ -22,3 +22,9 @@ CONFIG_FREERTOS_HZ=1000
 
 # Log level
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# Wake word: 你好小智 (wn9_nihaoxiaozhi_tts) — WakeNet9, Chinese, high-perf
+# Matches esp_srmodel_init("model") in afe_wake_word.cc which scans for ESP_WN_PREFIX
+CONFIG_USE_AFE_WAKE_WORD=y
+CONFIG_USE_AUDIO_PROCESSOR=y
+CONFIG_SR_WN_WN9_NIHAOXIAOZHI_TTS=y

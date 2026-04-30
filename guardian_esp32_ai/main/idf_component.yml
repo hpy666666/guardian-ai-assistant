@@ -1,11 +1,16 @@
 ## IDF Component Manager Manifest File
 dependencies:
-  ## Opus encoder/decoder for audio
-  78/esp-opus-encoder: "~2.4.1"
+  ## ESP-ADF official audio codec & effects (replaces 78/esp-opus-encoder)
+  ## Provides: esp_opus_enc, esp_opus_dec, esp_ae_rate_cvt
+  espressif/esp_audio_codec: "~2.4.1"
+  espressif/esp_audio_effects: "~1.2.1"
 
-  ## WebSocket client (在 IDF v5.x 中已移至组件管理器)
+  ## esp-sr: AFE (AEC + VAD + NS) and SR models
+  espressif/esp-sr: "~2.3.0"
+
+  ## WebSocket client
   espressif/esp_websocket_client: ">=1.1.0"
 
-  ## Required IDF version
+  ## Required IDF version (aligned with xiaozhi upstream)
   idf:
-    version: ">=5.4.0"
+    version: ">=5.5.2"

@@ -166,7 +166,7 @@ rt_err_t bh1750_init(void)
     }
 
     /* Initialise result mutex */
-    ret = rt_mutex_init(&s_mutex, "bh1750_mtx", RT_IPC_FLAG_FIFO);
+    ret = rt_mutex_init(&s_mutex, "bh1750_mtx", RT_IPC_FLAG_PRIO);
     if (ret != RT_EOK)
     {
         LOG_E("mutex init failed");

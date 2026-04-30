@@ -23,7 +23,7 @@ venv/
 env/
 
 # ============================================================
-# 模型文件（体积过大，用 Git LFS 或单独管理）
+# 模型文件（体积过大）
 # ============================================================
 *.bin
 *.pt
@@ -32,21 +32,38 @@ env/
 *.safetensors
 *.onnx
 *.npz
+*.rknn
 models/
 */models/
+**/models/
 
 # ============================================================
-# 音频/临时输出
+# 音频/视频/临时输出
 # ============================================================
 *.wav
 *.mp3
 *.pcm
+*.mp4
+*.avi
+*.mkv
 tmp/
 */tmp/
+**/tmp/
 
 # ============================================================
-# STM32 / RT-Thread 编译产物
+# 图片与演示素材（image 目录）
 # ============================================================
+image/
+
+# ============================================================
+# STM32 / RT-Thread
+# ============================================================
+# RT-Thread 完整官方源码，不属于本项目代码
+guardian_f407/rt-thread/
+# STM32 第三方库（CMSIS、HAL Driver 等）
+guardian_f407/libraries/
+guardian_f407/packages/
+# 编译产物
 guardian_f407/build/
 guardian_f407/Debug/
 guardian_f407/.sconsign.dblite
@@ -57,17 +74,41 @@ guardian_f407/rtconfig.pyc
 **/*.map
 **/*.elf
 **/*.hex
-**/*.bin
 
 # ============================================================
-# ESP32 (ESP-IDF) 编译产物
+# ESP32 (ESP-IDF)
 # ============================================================
+# ESP-IDF 编译产物（体积极大）
 guardian_esp32_ai/build/
 guardian_esp32_ai/managed_components/
 guardian_esp32_ai/*.bin
 guardian_esp32_ai/nvs.bin
 guardian_esp32_ai/wifi_nvs.bin
 guardian_esp32_ai/dependencies.lock
+
+# ============================================================
+# xiaozhi-esp32-server（第三方开源项目，仅保留我们的配置）
+# ============================================================
+guardian_server/main/xiaozhi-server/
+# 例外：保留我们自定义的配置文件（用 ! 取消忽略）
+!guardian_server/main/xiaozhi-server/config.yaml
+!guardian_server/main/xiaozhi-server/requirements.txt
+
+# ============================================================
+# 泰山派 rknn 调试/转换脚本（非核心运行代码）
+# ============================================================
+guardian_taishanpi/rknn/debug_*.py
+guardian_taishanpi/rknn/test_*.py
+guardian_taishanpi/rknn/convert_*.py
+guardian_taishanpi/rknn/bench_*.py
+guardian_taishanpi/rknn/check_*.py
+guardian_taishanpi/rknn/camera_preview.py
+guardian_taishanpi/rknn/object_detect.py
+guardian_taishanpi/rknn/pose_inference.py
+guardian_taishanpi/rknn/screenshot_chart.py
+guardian_taishanpi/rknn/zerocopy/debug_*.py
+guardian_taishanpi/rknn/zerocopy/test_*.py
+guardian_taishanpi/rknn/zerocopy/bench_*.py
 
 # ============================================================
 # Node.js
@@ -81,6 +122,7 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+nul
 
 # ============================================================
 # IDE
@@ -91,11 +133,17 @@ desktop.ini
 *.swo
 
 # ============================================================
-# index-tts-vllm（部署环境，不纳入版本管理）
+# index-tts-vllm（部署环境）
 # ============================================================
 index-tts-vllm/
 
 # ============================================================
-# docs/ 目录（参考资料、模块资料，不纳入版本管理）
+# docs/ 目录（参考资料、模块资料）
 # ============================================================
 docs/
+
+# ============================================================
+# 杂项
+# ============================================================
+*.log
+*.tmp

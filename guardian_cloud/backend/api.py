@@ -1,22 +1,33 @@
 """
 Guardian Cloud - REST API 服务
-功能：提供 HTTP 接口，供前端网页查询 InfluxDB 中的历史数据
-运行：uvicorn api:app --reload --port 8000
+功能：提供 HTTP 接口，供前端网页查询 InfluxDB 中的历史数据，以及管理 xiaozhi-server 配置
+运行：uvicorn api:app --reload --port 8001
 
 接口列表：
-  GET /                          - 服务健康检查
-  GET /api/heartrate/{device_id} - 查询心率+血氧历史（MAX30102，measurement: heartrate）
-  GET /api/spo2/{device_id}      - 查询血氧历史（同 heartrate measurement，字段 spo2）
-  GET /api/env/{device_id}       - 查询温湿度历史（BME280，measurement: env）
-  GET /api/light/{device_id}     - 查询光照强度历史（BH1750，measurement: light）
-  GET /api/gas/{device_id}       - 查询气体传感器历史（MQ-4/MQ-7，measurement: gas）
-  GET /api/imu/{device_id}       - 查询IMU数据历史
-  GET /api/alerts/{device_id}    - 查询告警历史
-  GET /api/status/{device_id}    - 查询设备最新状态
-  GET /api/devices               - 查询所有在线设备列表
+  GET /                                - 服务健康检查
+  GET /api/heartrate/{device_id}       - 查询心率+血氧历史（MAX30102，measurement: heartrate）
+  GET /api/spo2/{device_id}            - 查询血氧历史（同 heartrate measurement，字段 spo2）
+  GET /api/env/{device_id}             - 查询温湿度历史（BME280，measurement: env）
+  GET /api/light/{device_id}           - 查询光照强度历史（BH1750，measurement: light）
+  GET /api/gas/{device_id}             - 查询气体传感器历史（MQ-4/MQ-7，measurement: gas）
+  GET /api/imu/{device_id}             - 查询IMU数据历史
+  GET /api/alerts/{device_id}          - 查询告警历史
+  GET /api/status/{device_id}          - 查询设备最新状态
+  GET /api/devices                     - 查询所有在线设备列表
+  GET  /api/tts-voice                  - 读取当前 TTS 音色
+  POST /api/tts-voice                  - 修改 TTS 音色
+  GET  /api/prompt                     - 读取当前 prompt / 角色配置
+  POST /api/prompt                     - 更新 prompt（同步老人姓名到声纹 speakers 和 memory）
+  GET  /api/memory                     - 读取 mem_local_short 记忆文件
+  DELETE /api/memory                   - 清空记忆文件
+  GET  /api/voiceprint/status          - 获取声纹服务状态
+  GET  /api/voiceprint/list            - 列出已注册声纹
+  POST /api/voiceprint/register        - 注册声纹（multipart audio）
+  DELETE /api/voiceprint/delete        - 删除声纹
+  POST /api/restart-ai                 - 重启 xiaozhi-server 进程
 """
 
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from influxdb_client import InfluxDBClient
 from influxdb_client.domain.write_precision import WritePrecision
@@ -26,6 +37,10 @@ from pydantic import BaseModel
 import os
 import re
 import yaml
+import json
+import httpx
+import asyncio
+import subprocess
 
 load_dotenv()
 
@@ -361,61 +376,398 @@ from(bucket: "{INFLUX_BUCKET}")
         return {"error": str(e)}
 
 
+
 # ──────────────────────────────────────────────
-# TTS 配置读写（PaddleSpeechTTS 参数）
+# TTS 配置读写（HuoshanDoubleStreamTTS 参数）
 # ──────────────────────────────────────────────
 
 # xiaozhi-server 配置文件路径（相对于此脚本往上两层目录）
-_XIAOZHI_CONFIG = os.path.join(
+_XIAOZHI_CONFIG = os.path.normpath(os.path.join(
     os.path.dirname(__file__),
-    "..", "..", "xiaozhi-esp32-server", "main", "xiaozhi-server", "data", ".config.yaml"
-)
+    "..", "..", "guardian_server", "main", "xiaozhi-server", "data", ".config.yaml"
+))
 
-class TtsConfig(BaseModel):
-    spk_id: int = 0
-    speed: float = 1.0
-    volume: float = 1.0
+# mem_local_short 记忆文件路径
+_MEMORY_FILE = os.path.normpath(os.path.join(
+    os.path.dirname(__file__),
+    "..", "..", "guardian_server", "main", "xiaozhi-server", "data", ".memory.yaml"
+))
 
-@app.get("/api/tts-config")
-def get_tts_config():
-    """读取 PaddleSpeechTTS 当前参数"""
-    cfg_path = os.path.normpath(_XIAOZHI_CONFIG)
-    if not os.path.exists(cfg_path):
-        raise HTTPException(status_code=404, detail=f"配置文件不存在: {cfg_path}")
+# 声纹服务地址
+_VP_BASE = "http://127.0.0.1:8002"
+_VP_KEY  = "guardian_vp_key"
+
+
+def _load_cfg() -> dict:
+    """加载 xiaozhi-server .config.yaml"""
+    if not os.path.exists(_XIAOZHI_CONFIG):
+        raise HTTPException(status_code=404, detail=f"配置文件不存在: {_XIAOZHI_CONFIG}")
+    with open(_XIAOZHI_CONFIG, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+def _save_cfg(cfg: dict):
+    """写回 xiaozhi-server .config.yaml"""
+    with open(_XIAOZHI_CONFIG, "w", encoding="utf-8") as f:
+        yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+
+# ── 音色读写 ────────────────────────────────────
+
+class TtsVoiceBody(BaseModel):
+    speaker: str
+
+@app.get("/api/tts-voice")
+def get_tts_voice():
+    """读取当前火山 TTS 音色"""
     try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
-        tts_cfg = cfg.get("TTS", {}).get("PaddleSpeechTTS", {})
-        return {
-            "spk_id": tts_cfg.get("spk_id", 0),
-            "speed":  tts_cfg.get("speed",  1.0),
-            "volume": tts_cfg.get("volume", 1.0),
-        }
+        cfg = _load_cfg()
+        speaker = cfg.get("TTS", {}).get("HuoshanDoubleStreamTTS", {}).get("speaker", "")
+        return {"speaker": speaker}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/tts-config")
-def set_tts_config(body: TtsConfig):
-    """更新 PaddleSpeechTTS 参数并写回 .config.yaml"""
-    cfg_path = os.path.normpath(_XIAOZHI_CONFIG)
-    if not os.path.exists(cfg_path):
-        raise HTTPException(status_code=404, detail=f"配置文件不存在: {cfg_path}")
-    # 限制范围
-    if not (0 <= body.spk_id <= 10):
-        raise HTTPException(status_code=400, detail="spk_id 必须在 0~10 之间")
-    if not (0.5 <= body.speed <= 2.0):
-        raise HTTPException(status_code=400, detail="speed 必须在 0.5~2.0 之间")
-    if not (0.5 <= body.volume <= 2.0):
-        raise HTTPException(status_code=400, detail="volume 必须在 0.5~2.0 之间")
+
+@app.post("/api/tts-voice")
+def set_tts_voice(body: TtsVoiceBody):
+    """修改火山 TTS 音色，写回配置文件"""
     try:
-        with open(cfg_path, "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f)
-        cfg.setdefault("TTS", {}).setdefault("PaddleSpeechTTS", {})
-        cfg["TTS"]["PaddleSpeechTTS"]["spk_id"] = body.spk_id
-        cfg["TTS"]["PaddleSpeechTTS"]["speed"]  = body.speed
-        cfg["TTS"]["PaddleSpeechTTS"]["volume"] = body.volume
-        with open(cfg_path, "w", encoding="utf-8") as f:
-            yaml.dump(cfg, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        return {"ok": True, "spk_id": body.spk_id, "speed": body.speed, "volume": body.volume}
+        cfg = _load_cfg()
+        cfg.setdefault("TTS", {}).setdefault("HuoshanDoubleStreamTTS", {})["speaker"] = body.speaker
+        _save_cfg(cfg)
+        return {"ok": True, "speaker": body.speaker}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Prompt / 角色配置 ────────────────────────────
+
+class PromptBody(BaseModel):
+    prompt: str
+    elder_name: str = ""          # 老人姓名（可选），同步到声纹 speakers 和 memory
+
+@app.get("/api/prompt")
+def get_prompt():
+    """读取当前 prompt 和老人姓名"""
+    try:
+        cfg = _load_cfg()
+        prompt = cfg.get("prompt", "")
+        # 从 voiceprint.speakers[0] 解析老人姓名
+        speakers = cfg.get("voiceprint", {}).get("speakers", [])
+        elder_name = ""
+        if speakers:
+            parts = speakers[0].split(",")
+            elder_name = parts[1].strip() if len(parts) > 1 else ""
+        return {"prompt": prompt, "elder_name": elder_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/prompt")
+def set_prompt(body: PromptBody):
+    """更新 prompt，并同步老人姓名到 voiceprint.speakers"""
+    try:
+        cfg = _load_cfg()
+        cfg["prompt"] = body.prompt
+        # 同步老人姓名到 voiceprint.speakers
+        if body.elder_name:
+            speakers = cfg.get("voiceprint", {}).get("speakers", [])
+            if speakers:
+                parts = speakers[0].split(",")
+                # 格式: id,姓名,描述
+                parts[1] = body.elder_name
+                cfg["voiceprint"]["speakers"][0] = ",".join(parts)
+            else:
+                cfg.setdefault("voiceprint", {})["speakers"] = [
+                    f"owner,{body.elder_name},独居老人，本设备主人"
+                ]
+        _save_cfg(cfg)
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── 记忆管理 ────────────────────────────────────
+
+@app.get("/api/memory")
+def get_memory():
+    """读取 mem_local_short 记忆文件（.memory.yaml）"""
+    if not os.path.exists(_MEMORY_FILE):
+        return {"memory": {}, "exists": False}
+    try:
+        with open(_MEMORY_FILE, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return {"memory": data, "exists": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/memory")
+def delete_memory():
+    """清空记忆文件"""
+    if os.path.exists(_MEMORY_FILE):
+        os.remove(_MEMORY_FILE)
+    return {"ok": True}
+
+
+# ── 声纹管理（代理到声纹服务 :8002）────────────────
+
+@app.get("/api/voiceprint/status")
+async def get_voiceprint_status():
+    """获取声纹服务健康状态"""
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            r = await client.get(f"{_VP_BASE}/voiceprint/health", params={"key": _VP_KEY})
+            return r.json()
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"声纹服务不可达: {e}")
+
+
+@app.get("/api/voiceprint/list")
+async def list_voiceprints():
+    """列出已注册说话人"""
+    async with httpx.AsyncClient(timeout=3.0) as client:
+        try:
+            r = await client.get(f"{_VP_BASE}/voiceprint/list", params={"key": _VP_KEY})
+            return r.json()
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"声纹服务不可达: {e}")
+
+
+@app.post("/api/voiceprint/register")
+async def register_voiceprint(
+    speaker_id: str = Form(...),
+    file: UploadFile = File(...),
+    accumulate: bool = Form(False),
+):
+    """注册声纹：转发音频到声纹服务"""
+    audio_bytes = await file.read()
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            data = {"speaker_id": speaker_id}
+            if accumulate:
+                data["accumulate"] = "true"
+            r = await client.post(
+                f"{_VP_BASE}/voiceprint/register",
+                params={"key": _VP_KEY},
+                data=data,
+                files={"file": (file.filename, audio_bytes, "audio/wav")},
+            )
+            if r.status_code != 200:
+                raise HTTPException(status_code=r.status_code, detail=r.text)
+            return r.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"声纹服务不可达: {e}")
+
+
+@app.delete("/api/voiceprint/delete")
+async def delete_voiceprint(speaker_id: str = Query(...)):
+    """删除已注册说话人"""
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            r = await client.delete(
+                f"{_VP_BASE}/voiceprint/delete",
+                params={"key": _VP_KEY, "speaker_id": speaker_id},
+            )
+            if r.status_code != 200:
+                raise HTTPException(status_code=r.status_code, detail=r.text)
+            return r.json()
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"声纹服务不可达: {e}")
+
+
+# ── 传感器快照（供 xiaozhi-server context_providers 调用）────────────────
+
+def _get_latest(measurement: str, device_id: str, field: str, minutes: int = 10):
+    """从 InfluxDB 取最近 N 分钟内某字段的最新一条值，无数据返回 None"""
+    flux = f'''
+from(bucket: "{INFLUX_BUCKET}")
+  |> range(start: -{minutes}m)
+  |> filter(fn: (r) => r._measurement == "{measurement}")
+  |> filter(fn: (r) => r.device_id == "{device_id}")
+  |> filter(fn: (r) => r._field == "{field}")
+  |> last()
+'''
+    rows = run_query(flux)
+    for row in rows:
+        if "error" not in row:
+            return row.get("value"), row.get("time")
+    return None, None
+
+
+def _age_label(iso_time: str) -> str:
+    """将 ISO 时间戳转为'X分钟前'的友好表示"""
+    if not iso_time:
+        return "未知"
+    try:
+        from datetime import timezone
+        t = datetime.fromisoformat(iso_time.replace("Z", "+00:00"))
+        delta = int((datetime.now(timezone.utc) - t).total_seconds())
+        if delta < 60:
+            return f"{delta}秒前"
+        elif delta < 3600:
+            return f"{delta // 60}分钟前"
+        else:
+            return f"{delta // 3600}小时前"
+    except Exception:
+        return "未知"
+
+
+@app.get("/api/sensor-snapshot/{device_id}")
+def get_sensor_snapshot(device_id: str):
+    """
+    供 xiaozhi-server context_providers 调用的传感器快照接口。
+    返回格式：{"code": 0, "data": {"心率": "78 bpm（正常）", ...}}
+    所有 InfluxDB 查询并发执行，通常 <300ms 完成。
+    """
+    validate_device_id(device_id)
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # 并发拉取所有字段
+    queries = {
+        "hr":    ("heartrate",  "heartrate"),
+        "spo2":  ("heartrate",  "spo2"),
+        "temp":  ("env",        "temperature"),
+        "humi":  ("env",        "humidity"),
+        "lux":   ("light",      "lux"),
+        "mq4":   ("gas",        "mq4_mv"),
+        "mq7":   ("gas",        "mq7_mv"),
+        "fall":  ("alert_fall", "triggered"),
+    }
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {
+            pool.submit(
+                _get_latest,
+                meas, device_id, field,
+                60 if key == "fall" else 10
+            ): key
+            for key, (meas, field) in queries.items()
+        }
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                results[key] = future.result()
+            except Exception:
+                results[key] = (None, None)
+
+    data = {}
+
+    # ── 心率 ──────────────────────────────────────
+    hr_val, hr_time = results.get("hr", (None, None))
+    if hr_val is not None:
+        hr = int(hr_val)
+        if hr < 50:
+            hr_label = f"{hr} bpm（⚠️ 偏低，请注意）"
+        elif hr <= 100:
+            hr_label = f"{hr} bpm（正常）"
+        elif hr <= 120:
+            hr_label = f"{hr} bpm（⚠️ 偏快，注意休息）"
+        else:
+            hr_label = f"{hr} bpm（⚠️ 过快，请立即关注）"
+        data["心率"] = hr_label
+    else:
+        data["心率"] = "暂无数据"
+
+    # ── 血氧 ──────────────────────────────────────
+    spo2_val, _ = results.get("spo2", (None, None))
+    if spo2_val is not None:
+        spo2 = int(spo2_val)
+        if spo2 >= 95:
+            spo2_label = f"{spo2}%（正常）"
+        elif spo2 >= 90:
+            spo2_label = f"{spo2}%（⚠️ 偏低，注意呼吸）"
+        else:
+            spo2_label = f"{spo2}%（⚠️ 过低，请立即关注）"
+        data["血氧"] = spo2_label
+    else:
+        data["血氧"] = "暂无数据"
+
+    # ── 室温 / 湿度 ───────────────────────────────
+    temp_val, _ = results.get("temp", (None, None))
+    humi_val, _ = results.get("humi", (None, None))
+    env_parts = []
+    if temp_val is not None:
+        env_parts.append(f"{temp_val:.1f}°C")
+    if humi_val is not None:
+        env_parts.append(f"湿度 {humi_val:.0f}%")
+    data["室内环境"] = "、".join(env_parts) if env_parts else "暂无数据"
+
+    # ── 光照 ──────────────────────────────────────
+    lux_val, _ = results.get("lux", (None, None))
+    if lux_val is not None:
+        lux = int(lux_val)
+        if lux < 50:
+            lux_label = f"{lux} lux（较暗，注意用眼）"
+        elif lux < 500:
+            lux_label = f"{lux} lux（正常）"
+        else:
+            lux_label = f"{lux} lux（较亮）"
+        data["光照"] = lux_label
+    else:
+        data["光照"] = "暂无数据"
+
+    # ── 气体 ──────────────────────────────────────
+    mq4_val, _ = results.get("mq4", (None, None))
+    mq7_val, _ = results.get("mq7", (None, None))
+    gas_alarm = (mq4_val is not None and mq4_val > 2000) or \
+                (mq7_val is not None and mq7_val > 2000)
+    if mq4_val is not None or mq7_val is not None:
+        data["气体安全"] = "⚠️ 检测到异常，请注意通风！" if gas_alarm else "正常"
+    else:
+        data["气体安全"] = "暂无数据"
+
+    # ── 跌倒 ──────────────────────────────────────
+    fall_val, fall_time = results.get("fall", (None, None))
+    if fall_val is not None and fall_val:
+        data["跌倒状态"] = f"⚠️ {_age_label(fall_time)}检测到疑似跌倒，请确认老人状况！"
+    else:
+        data["跌倒状态"] = "无异常"
+
+    # ── 数据时效 ──────────────────────────────────
+    data["数据更新时间"] = _age_label(hr_time) if hr_time else "设备可能离线"
+
+    return {"code": 0, "data": data}
+
+
+# ── 重启 AI 服务 ────────────────────────────────
+
+@app.post("/api/restart-ai")
+def restart_ai():
+    """
+    通过 taskkill 结束 xiaozhi-server 的 Python 进程（app.py）。
+    start_all.bat 里的进程窗口会自动退出，需要用户手动重启或改造为守护进程。
+    当前实现：发送 CTRL_C 信号给监听 8000 端口的进程。
+    """
+    try:
+        # 找到监听 8000 端口的 PID
+        result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True, text=True, timeout=5
+        )
+        pid = None
+        for line in result.stdout.splitlines():
+            if ":8000" in line and "LISTENING" in line:
+                parts = line.split()
+                pid = parts[-1]
+                break
+        if not pid:
+            return {"ok": False, "msg": "未找到监听 8000 端口的进程，服务可能未运行"}
+        subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True, timeout=5)
+        return {"ok": True, "msg": f"已终止 PID={pid}，请在对应窗口重新运行 app.py"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

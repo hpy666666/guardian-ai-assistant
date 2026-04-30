@@ -90,27 +90,66 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef* hadc)
   * @brief SPI MSP Initialization
   * @param hspi: SPI handle pointer
   * @retval None
+  * @note  SPI2 was used for external SD card module.
+  *        SD card is now handled by onboard SDIO - SPI2 no longer needed.
   */
 void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi)
 {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    if(hspi->Instance==SPI2)
-    {
-        /* Peripheral clock enable */
-        __HAL_RCC_SPI2_CLK_ENABLE();
-        __HAL_RCC_GPIOB_CLK_ENABLE();
+    (void)hspi;
+}
 
-        /**SPI2 GPIO Configuration
-        PB13     ------> SPI2_SCK
-        PB14     ------> SPI2_MISO
-        PB15     ------> SPI2_MOSI
+/**
+  * @brief SD card (SDIO) MSP Initialization
+  *        Configures SDIO GPIO pins for the onboard SD card slot:
+  *        PC8=D0, PC9=D1, PC10=D2, PC11=D3, PC12=CLK, PD2=CMD
+  * @param hsd: SD handle pointer
+  * @retval None
+  */
+void HAL_SD_MspInit(SD_HandleTypeDef* hsd)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    if (hsd->Instance == SDIO)
+    {
+        /* Enable peripheral clocks */
+        __HAL_RCC_SDIO_CLK_ENABLE();
+        __HAL_RCC_GPIOC_CLK_ENABLE();
+        __HAL_RCC_GPIOD_CLK_ENABLE();
+
+        /**SDIO GPIO Configuration
+        PC8  ------> SDIO_D0
+        PC9  ------> SDIO_D1
+        PC10 ------> SDIO_D2
+        PC11 ------> SDIO_D3
+        PC12 ------> SDIO_CK
+        PD2  ------> SDIO_CMD
         */
-        GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_14|GPIO_PIN_15;
+        GPIO_InitStruct.Pin = GPIO_PIN_8 | GPIO_PIN_9 | GPIO_PIN_10 |
+                              GPIO_PIN_11 | GPIO_PIN_12;
         GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-        GPIO_InitStruct.Pull = GPIO_NOPULL;
+        GPIO_InitStruct.Pull = GPIO_PULLUP;
         GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-        GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+        GPIO_InitStruct.Alternate = GPIO_AF12_SDIO;
+        HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+        GPIO_InitStruct.Pin = GPIO_PIN_2;
+        GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull = GPIO_PULLUP;
+        GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+        GPIO_InitStruct.Alternate = GPIO_AF12_SDIO;
+        HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+        /* SDIO peripheral interrupt */
+        HAL_NVIC_SetPriority(SDIO_IRQn, 5, 0);
+        HAL_NVIC_EnableIRQ(SDIO_IRQn);
+
+        /* DMA2 Stream3 (SDIO RX) interrupt */
+        HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 6, 0);
+        HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+
+        /* DMA2 Stream6 (SDIO TX) interrupt */
+        HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 6, 0);
+        HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
     }
 }
 

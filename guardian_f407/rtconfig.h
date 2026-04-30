@@ -116,7 +116,8 @@
 #define RT_USING_PIN
 #define RT_USING_ADC
 #define RT_USING_SPI
-#define RT_USING_SPI_MSD
+/* #define RT_USING_SPI_MSD */   /* Disabled: SD card switched to onboard SDIO */
+#define RT_USING_SDIO
 #define RT_USING_WDT
 
 /* Using USB */

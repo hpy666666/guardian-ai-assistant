@@ -3,21 +3,24 @@
  * Target: STM32F407 + RT-Thread standard edition
  *
  * Hardware:
- *   SPI2 Bus:
- *   - PB13 -> SCK
- *   - PB14 -> MISO
- *   - PB15 -> MOSI
- *   - PB12 -> CS (directly controlled)
+ *   Onboard SDIO interface (STM32F407ZGT6 core board):
+ *   - PC8  -> SDIO_D0
+ *   - PC9  -> SDIO_D1
+ *   - PC10 -> SDIO_D2
+ *   - PC11 -> SDIO_D3
+ *   - PC12 -> SDIO_CLK
+ *   - PD2  -> SDIO_CMD
  *
  * Troubleshooting:
- *   1. If mount fails: check SPI wiring, card power (5V to module VCC)
- *   2. If read-only: check WP pin, or reformat card as FAT32 on PC
+ *   1. If mount fails: check SD card inserted, card formatted as FAT32
+ *   2. If read-only: reformat card as FAT32 on PC
  *   3. If mkfs hangs: card may need FAT32 format from PC first
  *
  * Change Logs:
  * Date         Notes
- * 2026-03-21   first version
+ * 2026-03-21   first version (SPI2 external module)
  * 2026-03-22   add diagnostic MSH commands
+ * 2026-04-03   switch to onboard SDIO interface
  */
 
 #include <rtthread.h>
@@ -25,56 +28,31 @@
 #include <dfs_fs.h>
 #include <dfs_posix.h>
 #include <drv_common.h>
-#include <drv_spi.h>
 
 #define DBG_TAG "sdcard"
 #define DBG_LVL DBG_LOG
 #include <rtdbg.h>
 
-#define SD_CS_PIN    GET_PIN(B, 12)  /* PB12 as SPI2 CS */
-
-/* Declare external function from spi_msd driver */
-extern rt_err_t msd_init(const char *sd_device_name, const char *spi_device_name);
+/* Onboard SDIO SD card device name registered by drv_sdio.c */
+#define SD_DEVICE_NAME  "sd0"
+#define SD_MOUNT_POINT  "/"
 
 /* Global status flags */
-static rt_bool_t s_spi_attached = RT_FALSE;
-static rt_bool_t s_msd_inited = RT_FALSE;
 static rt_bool_t s_mounted = RT_FALSE;
 
 int sdcard_mount(void)
 {
     rt_err_t res;
 
-    /* Wait for system to stabilize */
+    /* Wait for SDIO driver and mmcsd stack to enumerate the card */
     rt_thread_mdelay(500);
 
-    /* 1. Attach SPI device with CS pin */
-    res = rt_hw_spi_device_attach("spi2", "spi20", GPIOB, GPIO_PIN_12);
-    if (res != RT_EOK)
-    {
-        LOG_E("Failed to attach SPI device spi20, err: %d", res);
-        return res;
-    }
-    s_spi_attached = RT_TRUE;
-    LOG_I("SPI device 'spi20' attached to spi2");
-
-    /* 2. Initialize SPI SD device */
-    res = msd_init("sd0", "spi20");
-    if (res != RT_EOK)
-    {
-        LOG_E("Failed to init SD device 'sd0', err: %d", res);
-        LOG_E("Check: 1) SD card inserted? 2) Module VCC=5V? 3) Wiring correct?");
-        return res;
-    }
-    s_msd_inited = RT_TRUE;
-    LOG_I("SD device 'sd0' initialized");
-
-    /* 3. Mount to root directory */
-    res = dfs_mount("sd0", "/", "elm", 0, 0);
+    /* Mount to root directory */
+    res = dfs_mount(SD_DEVICE_NAME, SD_MOUNT_POINT, "elm", 0, 0);
     if (res == RT_EOK)
     {
         s_mounted = RT_TRUE;
-        LOG_I("SD card mounted to '/' successfully");
+        LOG_I("SD card mounted to '/' successfully (SDIO)");
     }
     else
     {
@@ -99,14 +77,11 @@ static int cmd_sd_status(int argc, char **argv)
     (void)argv;
 
     rt_kprintf("\n===== SD Card Status =====\n");
-    rt_kprintf("SPI attached:  %s\n", s_spi_attached ? "YES" : "NO");
-    rt_kprintf("MSD init:      %s\n", s_msd_inited ? "YES" : "NO");
+    rt_kprintf("Interface:     SDIO (onboard)\n");
     rt_kprintf("FS mounted:    %s\n", s_mounted ? "YES" : "NO");
 
-    /* Check if devices exist */
+    /* Check if device exists */
     rt_kprintf("\nDevice check:\n");
-    rt_kprintf("  spi2:  %s\n", rt_device_find("spi2") ? "found" : "NOT FOUND");
-    rt_kprintf("  spi20: %s\n", rt_device_find("spi20") ? "found" : "NOT FOUND");
     rt_kprintf("  sd0:   %s\n", rt_device_find("sd0") ? "found" : "NOT FOUND");
 
     /* Show mount info */
@@ -137,7 +112,7 @@ static int cmd_sd_test(int argc, char **argv)
     int fd;
     int ret;
     const char *test_file = "/sd_test.txt";
-    const char *test_data = "Guardian SD card test - RT-Thread\n";
+    const char *test_data = "Guardian SD card test - RT-Thread SDIO\n";
     char read_buf[64] = {0};
 
     (void)argc;
@@ -158,7 +133,6 @@ static int cmd_sd_test(int argc, char **argv)
     {
         rt_kprintf("   FAILED to open file for writing! (err: %d)\n", fd);
         rt_kprintf("   Possible causes:\n");
-        rt_kprintf("   - Card is write-protected (check WP switch)\n");
         rt_kprintf("   - Card needs FAT32 format from PC\n");
         rt_kprintf("   - File system corrupted\n");
         return -1;
@@ -246,7 +220,7 @@ static int cmd_sd_remount(int argc, char **argv)
     }
 
     /* Try to mount again */
-    res = dfs_mount("sd0", "/", "elm", 0, 0);
+    res = dfs_mount(SD_DEVICE_NAME, SD_MOUNT_POINT, "elm", 0, 0);
     if (res == RT_EOK)
     {
         s_mounted = RT_TRUE;
@@ -264,11 +238,6 @@ MSH_CMD_EXPORT_ALIAS(cmd_sd_remount, sd_remount, remount SD card);
 
 /**
  * @brief Low-level SD card write test (bypasses filesystem)
- * This writes directly to the block device to test if the SD card
- * hardware/driver supports writing.
- *
- * Note: Since the device is in STANDALONE mode and already opened by
- * the filesystem, we access it directly without open/close.
  */
 static int cmd_sd_lowlevel(int argc, char **argv)
 {
@@ -276,7 +245,7 @@ static int cmd_sd_lowlevel(int argc, char **argv)
     rt_uint8_t *buf;
     rt_uint8_t *buf_verify;
     rt_size_t ret;
-    rt_uint32_t test_sector = 100;  /* Test on sector 100 (safe area, not boot sector) */
+    rt_uint32_t test_sector = 100;
 
     (void)argc;
     (void)argv;
@@ -324,15 +293,6 @@ static int cmd_sd_lowlevel(int argc, char **argv)
     if (ret != 1)
     {
         rt_kprintf("   WRITE FAILED! (ret=%d)\n", ret);
-        rt_kprintf("\n   >>> SD card rejects write commands <<<\n");
-        rt_kprintf("   Possible causes:\n");
-        rt_kprintf("   1. Card has internal write protection\n");
-        rt_kprintf("   2. Card is damaged or permanently read-only\n");
-        rt_kprintf("   3. SPI signal quality issue\n");
-        rt_kprintf("\n   Solutions to try:\n");
-        rt_kprintf("   - Use a different SD card\n");
-        rt_kprintf("   - Check module VCC is 5V (not 3.3V)\n");
-        rt_kprintf("   - Check SPI wiring connections\n");
         rt_free(buf);
         rt_free(buf_verify);
         return -1;
@@ -341,7 +301,7 @@ static int cmd_sd_lowlevel(int argc, char **argv)
 
     /* Test 3: Read back and verify */
     rt_kprintf("\n3. Verifying write by reading back...\n");
-    rt_memset(buf_verify, 0xAA, 512);  /* Fill with pattern to detect read */
+    rt_memset(buf_verify, 0xAA, 512);
     ret = rt_device_read(dev, test_sector, buf_verify, 1);
     if (ret != 1)
     {
@@ -351,7 +311,6 @@ static int cmd_sd_lowlevel(int argc, char **argv)
         return -1;
     }
 
-    /* Compare */
     if (rt_memcmp(buf, buf_verify, 512) == 0)
     {
         rt_kprintf("   Verify OK - Data matches!\n");
@@ -359,21 +318,12 @@ static int cmd_sd_lowlevel(int argc, char **argv)
     else
     {
         rt_kprintf("   Verify FAILED - Data mismatch!\n");
-        rt_kprintf("   Original first 16: ");
-        for (int i = 0; i < 16; i++)
-            rt_kprintf("%02X ", buf[i]);
-        rt_kprintf("\n   Readback first 16: ");
-        for (int i = 0; i < 16; i++)
-            rt_kprintf("%02X ", buf_verify[i]);
-        rt_kprintf("\n");
         rt_free(buf);
         rt_free(buf_verify);
         return -1;
     }
 
     rt_kprintf("\n*** Low-Level Test PASSED! ***\n");
-    rt_kprintf("SD card hardware supports read/write.\n");
-    rt_kprintf("Problem is likely in filesystem layer.\n");
     rt_kprintf("=============================\n\n");
 
     rt_free(buf);

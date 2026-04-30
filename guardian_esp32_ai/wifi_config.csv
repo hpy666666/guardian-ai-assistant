@@ -1,8 +1,22 @@
 key,type,encoding,value
+# ============================================================
+# 修改配置后，在 ESP-IDF 专用终端执行以下命令烧录（复制粘贴）：
+#
+#   cd C:\Users\34376\Desktop\embedded_design_competition\guardian_esp32_ai
+#
+#   python %IDF_PATH%\components\nvs_flash\nvs_partition_generator\nvs_partition_gen.py generate wifi_config.csv wifi_nvs.bin 0x6000
+#
+#   python -m esptool -p COM12 write_flash 0x9000 wifi_nvs.bin
+#
+# ============================================================
+# 【WiFi 配置】修改 ssid 和 password 为当前所用网络
 wifi,namespace,,
 ssid,data,string,CMCC-esn6
 password,data,string,yntyg4h4
+# 【AI 服务器地址】ws://192.168.1.16:8010/xiaozhi/v1/
+# 查电脑IP：ipconfig → 以太网/WLAN 的 IPv4 地址
 websocket,namespace,,
-url,data,string,ws://192.168.1.11:8000/xiaozhi/v1/
+url,data,string,ws://192.168.1.16:8010/xiaozhi/v1/
+# 【设备ID】与 MQTT Topic guardian/{device_id}/... 对应，一般不改
 mqtt,namespace,,
 device_id,data,string,001

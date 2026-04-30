@@ -21,8 +21,10 @@
 
 1. **RT-Smart 多进程隔离**：AI 推理进程崩溃不影响实时报警进程，端到端延迟 ≤ 200ms
 2. **跌倒双验证**：MPU6050 加速度冲击检测 + 摄像头 YOLO-Pose 姿态识别，融合降低误报
-3. **AI 语音助手**：基于 xiaozhi-esp32-server，集成 FunASR（本地）+ 阿里云 LLM + IndexTTS（本地），全程低延迟
-4. **全链路云监控**：传感器数据经 MQTT 上报至 InfluxDB，前端实时看板展示
+3. **AI 语音助手**：基于 xiaozhi-esp32-server，集成 FunASR（本地）+ 阿里云 LLM + 火山引擎 TTS，全程低延迟
+4. **声纹识别**：resemblyzer 256 维声纹嵌入，余弦相似度比对，自动识别家庭成员与陌生人
+5. **AI 实时感知传感器**：每次对话前自动刷新传感器快照，AI 可直接回答健康指标问题
+6. **全链路云监控**：传感器数据经 MQTT 上报至 InfluxDB，前端实时看板展示
 
 ---
 
@@ -33,7 +35,10 @@ guardian-ai-assistant/
 ├── guardian_esp32_ai/          # ESP32-S3 合并固件（AI语音 + 传感器网关）
 │   ├── main/
 │   │   ├── sensor_gateway/     # UART接收 → JSON解析 → MQTT发布
-│   │   ├── audio/              # I2S麦克风/扬声器驱动
+│   │   ├── audio/              # I2S麦克风/扬声器驱动、AFE 音频处理、唤醒词框架
+│   │   │   ├── codecs/         # NoAudioCodecSimplex（含软件 AEC 参考通道）
+│   │   │   ├── processors/     # AfeAudioProcessor（VAD + 神经网络降噪）
+│   │   │   └── wake_words/     # AfeWakeWord 框架（待 wakenet 模型）
 │   │   ├── protocols/          # WebSocket 小智协议 v3
 │   │   └── boards/guardian-s3/ # GPIO引脚定义
 │   ├── wifi_config.csv         # WiFi / WebSocket / MQTT 配置（生成NVS bin）
@@ -45,8 +50,9 @@ guardian-ai-assistant/
 │   ├── libraries/              # CMSIS / STM32F4xx HAL
 │   └── rt-thread/              # RT-Thread 内核源码
 │
-├── guardian_server/            # 服务端 AI 管道（xiaozhi-esp32-server）
-│   └── main/xiaozhi-server/    # ASR + LLM + TTS 一体化服务
+├── guardian_server/            # 服务端
+│   ├── main/xiaozhi-server/    # ASR + LLM + TTS 一体化 AI 语音服务（:8000）
+│   └── voiceprint_service/     # 声纹识别服务（resemblyzer，:8002）
 │
 └── guardian_cloud/             # 云端后端 + 前端看板
     ├── backend/
@@ -54,7 +60,7 @@ guardian-ai-assistant/
     │   ├── api.py              # FastAPI REST API（:8001）
     │   └── .env.example        # 环境变量模板
     └── frontend/
-        └── index.html          # Web 监控看板（含AI助手标签页）
+        └── index.html          # Web 监控看板（含声纹注册、AI助手标签页）
 ```
 
 ---
@@ -69,8 +75,10 @@ ESP32-S3（guardian_esp32_ai 合并固件）
     ├─ sensor_gateway 后台任务 ── MQTT/TLS ──► EMQX Cloud ──► mqtt_subscriber.py ──► InfluxDB
     └─ AI语音助手主任务 ────────── WebSocket ──► xiaozhi-server:8000
                                                      ├─ FunASR（本地 ASR）
-                                                     ├─ 阿里云 LLM（qwen）
-                                                     └─ IndexTTS（WSL2，:11996）
+                                                     ├─ 阿里云 LLM（qwen-flash）
+                                                     ├─ 火山引擎 TTS（双流 WebSocket）
+                                                     ├─ 声纹识别 ──► voiceprint_service:8002
+                                                     └─ 传感器快照 ──► api.py:8001/sensor-snapshot
 
 InfluxDB ──► api.py:8001 ──► 前端看板:8080
 ```
@@ -119,39 +127,39 @@ InfluxDB ──► api.py:8001 ──► 前端看板:8080
 ### 一键启动（推荐）
 
 ```bat
-C:\Users\34376\Desktop\start_all.bat
+C:\Users\34376\Desktop\embedded_design_competition\docs\项目进程与总结\start_all.bat
 ```
 
-启动顺序：IndexTTS（WSL2）→ MQTT订阅 → REST API → xiaozhi-server → 前端
+启动顺序：声纹识别服务（:8002）→ xiaozhi AI 语音（:8000）→ MQTT 订阅 → REST API（:8001）→ 前端（:8080）
 
-### 手动启动
+### 手动启动（同一 conda 环境 `xiaozhi-esp32-server`）
 
-**窗口 1 — IndexTTS（WSL2）**
-```bash
-# WSL2 Ubuntu 内
-conda activate index-tts-vllm
-cd /home/hpy/index-tts-vllm
-CC=/usr/bin/gcc python api_server.py \
-    --model_dir /mnt/d/models/IndexTeam/IndexTTS-1___5 \
-    --port 11996 --gpu_memory_utilization 0.85
-```
-
-**窗口 2 — MQTT 订阅 + 存储**
+**窗口 1 — 声纹识别服务**
 ```powershell
+conda activate xiaozhi-esp32-server
+cd guardian_server\voiceprint_service
+uvicorn app:app --host 0.0.0.0 --port 8002
+```
+
+**窗口 2 — AI 语音服务器**
+```powershell
+conda activate xiaozhi-esp32-server
+cd guardian_server\main\xiaozhi-server
+python app.py
+```
+
+**窗口 3 — MQTT 订阅 + 存储**
+```powershell
+conda activate xiaozhi-esp32-server
 cd guardian_cloud\backend
 python mqtt_subscriber.py
 ```
 
-**窗口 3 — REST API**
+**窗口 4 — REST API**
 ```powershell
+conda activate xiaozhi-esp32-server
 cd guardian_cloud\backend
 uvicorn api:app --host 0.0.0.0 --port 8001
-```
-
-**窗口 4 — AI 语音服务器**
-```powershell
-cd guardian_server\main\xiaozhi-server
-python app.py
 ```
 
 **窗口 5 — 前端静态服务**
@@ -197,11 +205,33 @@ esptool.py --chip esp32s3 -p COM12 write_flash 0x9000 wifi_nvs.bin
 |------|---------|------|
 | VAD | SileroVAD | 本地，自动检测说话结束 |
 | ASR | FunASR (SenseVoiceSmall) | 本地，model.pt 已下载 |
-| LLM | AliyunLLM (qwen-flash) | 阿里云百炼 API |
-| TTS | IndexStreamTTS | 本地 IndexTTS（WSL2 :11996）|
-| TTS 音色 | nahida | 原神纳西妲女声（参考音频 7s）|
+| LLM | AliyunLLM (qwen-flash-2025-07-28) | 阿里云百炼 API |
+| TTS | HuoshanDoubleStreamTTS | 火山引擎双流 WebSocket TTS |
+| TTS 音色 | zh_female_wanwanxiaohe_moon_bigtts | 火山引擎温柔女声 |
+| Memory | mem_local_short (AliyunLLM) | 短时记忆压缩，LLM 用 AliyunLLM |
+| Intent | function_call | 天气、新闻、音乐意图识别 |
 
-切换音色：修改 `data/.config.yaml` 中 `TTS.IndexStreamTTS.voice`，重启 xiaozhi-server。
+### 声纹识别配置
+
+声纹识别服务独立运行于 `guardian_server/voiceprint_service/`：
+
+| 配置项 | 值 | 说明 |
+|--------|----|------|
+| API Key | `guardian_vp_key` | 通过 query param `?key=` 传入 |
+| 相似度阈值 | 0.72 | 低于此值判定为陌生人 |
+| 注册端点 | `POST /voiceprint/register` | 支持 `accumulate=true` 累积多次录音取均值 |
+| 识别端点 | `POST /voiceprint/identify` | 返回说话人 ID 和相似度分数 |
+
+在前端看板「声纹注册」标签页注册声纹，或直接 curl：
+```powershell
+# 注册
+Invoke-RestMethod -Uri "http://127.0.0.1:8002/voiceprint/register?key=guardian_vp_key" `
+  -Method POST -Form @{speaker_id="owner"; file=Get-Item audio.wav}
+
+# 识别测试
+Invoke-RestMethod -Uri "http://127.0.0.1:8002/voiceprint/identify?key=guardian_vp_key" `
+  -Method POST -Form @{speaker_ids="owner"; file=Get-Item audio.wav}
+```
 
 ### 云端服务
 
@@ -219,6 +249,9 @@ esptool.py --chip esp32s3 -p COM12 write_flash 0x9000 wifi_nvs.bin
 | `GET /api/location` | GPS 位置 |
 | `GET /api/alerts` | 告警记录 |
 | `GET /api/status` | 系统状态 |
+| `GET /api/sensor-snapshot/{device_id}` | AI 实时传感器快照（并发查询 InfluxDB，<300ms）|
+| `POST /api/voiceprint/register` | 代理声纹注册（支持 accumulate 累积更新）|
+| `POST /api/voiceprint/identify` | 代理声纹识别 |
 
 ---
 
@@ -228,8 +261,8 @@ esptool.py --chip esp32s3 -p COM12 write_flash 0x9000 wifi_nvs.bin
 |------|------|
 | 8000 | xiaozhi-esp32-server（WebSocket AI 语音）|
 | 8001 | api.py（传感器数据 REST API）|
+| 8002 | voiceprint_service（声纹识别 HTTP REST）|
 | 8080 | 前端看板（HTTP）|
-| 11996 | IndexTTS（WSL2 HTTP REST）|
 
 ---
 
@@ -241,18 +274,26 @@ esptool.py --chip esp32s3 -p COM12 write_flash 0x9000 wifi_nvs.bin
 - [x] ESP32-S3 合并固件（AI 语音助手 + 传感器网关二合一）
 - [x] 小智协议 v3 WebSocket 通信
 - [x] FunASR 本地语音识别部署
-- [x] IndexTTS（WSL2）本地 TTS，含三个音色（nahida / xu_sheng / xiao_he）
-- [x] TTS 音频失真修复（24kHz→16kHz 降采样 + end_of_stream flush）
+- [x] 火山引擎 TTS 双流 WebSocket（低延迟，温柔女声）
 - [x] MQTT 云端数据链路（ESP32 → EMQX → InfluxDB）
-- [x] 前端看板（数据概览 / 实时图表 / GPS 地图 / AI 助手 / 告警历史）
-- [x] 一键启动脚本
+- [x] 前端看板（数据概览 / 实时图表 / GPS 地图 / AI 助手 / 声纹注册 / 告警历史）
+- [x] 声纹识别服务（resemblyzer，注册/识别/累积更新）
+- [x] AI 实时感知传感器数据（连接时注入 + 每次对话前刷新）
+- [x] ESP32 AFE 音频处理器（VAD + 神经网络降噪）
+- [x] 软件 AEC 参考通道（menuconfig 可选）
+- [x] 唤醒词检测框架（代码完整，待配置 wakenet 模型）
+- [x] 短时记忆模块（mem_local_short + AliyunLLM）
+- [x] 一键启动脚本（含声纹服务）
 
 ### 进行中 / 待完成
 
-- [ ] INMP441 麦克风接线确认（L/R 引脚需接 GND）
+- [ ] wakenet 模型配置（idf_component.yml 引入，实现免按键唤醒）
+- [ ] AEC 实机效果验证（menuconfig → Enable Device-Side AEC）
+- [ ] 声纹注册用 ESP32 录音（解决浏览器 WebM vs PCM 跨设备域偏移问题）
 - [ ] STM32F407 传感器硬件实物调试
 - [ ] K230 RT-Thread Smart 环境搭建（等待硬件到货）
 - [ ] YOLO-Pose 跌倒检测模型 KPU 移植
+- [ ] 告警主动联动 AI（mqtt_subscriber → AI WebSocket 推送系统消息）
 - [ ] 三板完整联调测试
 
 ---
@@ -275,11 +316,17 @@ esptool.py --chip esp32s3 -p COM12 write_flash 0x9000 wifi_nvs.bin
 
 **ESP32 MQTT 断开**：检查手机热点是否为 2.4GHz；串口日志 `Config loaded:` 行确认 SSID/密码。
 
-**TTS 无声音**：MAX98357A 的 SD 引脚必须接 3.3V；确认 IndexTTS 在 WSL2 中正常运行（日志出现 `Uvicorn running on http://0.0.0.0:11996`）。
+**TTS 无声音**：MAX98357A 的 SD 引脚必须接 3.3V；确认火山引擎 TTS 的 access_token 未过期（`data/.config.yaml` → `TTS.HuoshanDoubleStreamTTS.access_token`）。
 
 **修改配置不生效**：持久化配置写入 `data/.config.yaml`（优先级高于 `config.yaml`）。
 
 **收不到 F407 数据**：检查 UART 接线 PC6→GPIO16 / PC7→GPIO17 / GND→GND，波特率 115200。
+
+**声纹识别总返回 stranger**：先检查声纹服务是否在 8002 端口运行；相似度阈值默认 0.72，可在 `data/.config.yaml` → `voiceprint.similarity_threshold` 调低；跨设备录音（浏览器 vs ESP32）会导致分数偏低，建议用「累积更新」多次注册。
+
+**声纹服务启动报 lzma DLL 错误**：已在 `pooch/processors.py` 中修复（try/except），若重装包后复现，重新应用该补丁。
+
+**传感器快照刷新超时警告**：InfluxDB 查询正常情况 <300ms；若频繁超时检查 InfluxDB token 是否有效（`guardian_cloud/backend/.env`）。
 
 ---
 
@@ -290,4 +337,4 @@ esptool.py --chip esp32s3 -p COM12 write_flash 0x9000 wifi_nvs.bin
 ---
 
 *竞赛：全国大学生嵌入式芯片与系统设计竞赛 2026*
-*最后更新：2026-04-02*
+*最后更新：2026-04-06*
