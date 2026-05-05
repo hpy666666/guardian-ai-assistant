@@ -1,8 +1,56 @@
+<div align="center">
+
 # Guardian — 智能安全监护系统
 
-面向**独居老人和残障人士**的多平台智能监护系统。整合视觉 AI、语音交互、多路传感器与云端看板，覆盖跌倒检测、反诈骗监听、生理健康监测、AI 语音助手、家属实时告警等场景。
+**面向独居老人和残障人士的多平台智能监护系统**
+
+整合视觉 AI、语音交互、多路传感器与云端看板，覆盖跌倒检测、反诈骗监听、生理健康监测、AI 语音助手、家属实时告警等场景。
+
+![ESP-IDF](https://img.shields.io/badge/ESP--IDF-v5.5.1-blue?logo=espressif)
+![RT-Thread](https://img.shields.io/badge/RT--Thread-v5.x-green)
+![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
+![Platform](https://img.shields.io/badge/Platform-RK3576%20%7C%20ESP32--S3%20%7C%20STM32F407-orange)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
 > 全国大学生嵌入式芯片与系统设计竞赛 2026 · 睿赛德赛道
+
+</div>
+
+---
+
+## 效果展示
+
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center"><img src="image/数据概览.png" width="380"/><br/><sub>数据概览 — 实时传感器卡片 + 折线图</sub></td>
+    <td align="center"><img src="image/告警历史.png" width="380"/><br/><sub>告警历史 — 跌倒 / 气体 / 陌生人告警列表</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="image/ai语音助手.png" width="380"/><br/><sub>AI 语音助手 — Prompt / 记忆 / TTS 管理</sub></td>
+    <td align="center"><img src="image/硬件连接.jpg" width="380"/><br/><sub>硬件连接 — 四平台实物连接</sub></td>
+  </tr>
+</table>
+
+</div>
+
+### 跌倒检测演示
+
+> 演示视频（225MB）超出 GitHub 文件限制，本地运行后可在 `image/result_vedio/fall_result.mp4` 查看跌倒检测效果。
+
+---
+
+## 目录
+
+- [系统架构](#系统架构)
+- [两种工作模式](#两种工作模式)
+- [功能概览](#功能概览)
+- [快速启动](#快速启动)
+- [硬件配置](#硬件配置)
+- [目录结构](#目录结构)
+- [技术栈](#技术栈)
+- [待完成事项](#待完成事项)
 
 ---
 
@@ -31,24 +79,24 @@ EMQX Cloud Broker（TLS 8883）
 ### 硬件平台
 
 | 板卡 | 芯片 | 主要职责 |
-|------|------|---------|
+|------|------|---------| 
 | 主控板 | STM32F407ZGT6 | 传感器采集、IMU 跌倒检测、SD 卡日志 |
 | AI 语音板 | ESP32-S3 N16R8 | 语音对话、WiFi 联网、MQTT 上云、传感器网关 |
-| 视觉板 | RK3576（泰山派） | 摄像头跌倒检测、人脸识别、目标检测、MJPEG 推流 |
+| 视觉板 | RK3576（泰山派 3M） | 摄像头跌倒检测、人脸识别、目标检测、MJPEG 推流 |
 | 云端 PC | Windows 11 | AI 后端、InfluxDB、前端看板、声纹识别 |
 
 ---
 
 ## 两种工作模式
 
-### 放置模式（摄像头固定）
+### 🏠 放置模式（摄像头固定）
 
 - 摄像头视野稳定，持续监测居家环境
 - **视觉跌倒检测**：YOLOv8n-pose 姿态估计 + 速度特征 + 三阶段状态机（NPU Core 0，~20 fps）
 - **人脸识别**：SCRFD-500M-KPS + MobileNet ArcFace，识别家庭成员；陌生人触发告警
-- **反诈骗监听**：检测到陌生人时自动开启麦克风监听，AI 分析对话内容，MQTT 上报
+- **反诈骗监听**：检测到陌生人时自动开启麦克风监听，本地规则引擎分析对话内容，MQTT 上报
 
-### 携带模式（随身携带）
+### 🚶 携带模式（随身携带）
 
 - 摄像头随身晃动，停用视觉跌倒检测
 - **IMU 跌倒检测**：MPU6050 三轴加速度，三阶段状态机（自由落体 → 撞击 → 静止确认）
@@ -59,52 +107,52 @@ EMQX Cloud Broker（TLS 8883）
 
 ## 功能概览
 
-### 视觉感知（RK3576）
+### 👁️ 视觉感知（RK3576）
 
 | 功能 | 状态 |
 |------|------|
-| 摄像头跌倒检测（放置模式） | 已完成 |
-| 人脸检测 + 识别（SCRFD + ArcFace） | 已完成 |
-| 身份锁定缓存（track_id，恢复 FPS ~20） | 已完成 |
-| MJPEG 视频推流（前端直接接入） | 已完成 |
-| 陌生人告警 + 反诈骗监听 | 已完成 |
-| 携带模式目标检测（YOLOv8n-det） | 已完成 |
-| 网页人脸录入接口（/enroll、/face_db） | 已完成 |
-| 告警截图存档（含时间戳和姓名） | 已完成 |
+| 摄像头跌倒检测（放置模式） | ✅ 已完成 |
+| 人脸检测 + 识别（SCRFD + ArcFace） | ✅ 已完成 |
+| 身份锁定缓存（track_id，恢复 FPS ~20） | ✅ 已完成 |
+| MJPEG 视频推流（前端直接接入） | ✅ 已完成 |
+| 陌生人告警 + 反诈骗监听 | ✅ 已完成 |
+| 携带模式目标检测（YOLOv8n-det） | ✅ 已完成 |
+| 网页人脸录入接口（/enroll、/face_db） | ✅ 已完成 |
+| 告警截图存档（含时间戳和姓名） | ✅ 已完成 |
 
-### AI 语音交互（ESP32-S3 + xiaozhi-server）
+### 🎤 AI 语音交互（ESP32-S3 + xiaozhi-server）
 
 | 功能 | 状态 |
 |------|------|
-| 按键唤醒（BOOT 键） | 已完成 |
-| 语音识别 ASR（FunASR SenseVoiceSmall，本地） | 已完成 |
-| 大模型对话（qwen-flash，function_call 工具调用） | 已完成 |
-| 语音合成 TTS（火山引擎双流 WSS，边生成边播放） | 已完成 |
-| 噪声抑制（AFE NSNet 神经网络降噪） | 已完成 |
-| 传感器数据注入 LLM（AI 可回答"我心率多少"） | 已完成 |
-| 唤醒词检测（WakeNet，框架就绪） | 基本完成 |
-| 回声消除 AEC（框架就绪，待实机验证） | 待验证 |
+| 按键唤醒（BOOT 键） | ✅ 已完成 |
+| 语音识别 ASR（FunASR SenseVoiceSmall，本地） | ✅ 已完成 |
+| 大模型对话（qwen-flash，function_call 工具调用） | ✅ 已完成 |
+| 语音合成 TTS（火山引擎双流 WSS，边生成边播放） | ✅ 已完成 |
+| 噪声抑制（AFE NSNet 神经网络降噪） | ✅ 已完成 |
+| 传感器数据注入 LLM（AI 可回答"我心率多少"） | ✅ 已完成 |
+| 唤醒词检测（WakeNet，框架就绪） | 🔧 基本完成 |
+| 回声消除 AEC（框架就绪，待实机验证） | ⏳ 待验证 |
 
-### 生理健康监测（STM32F407）
+### 💓 生理健康监测（STM32F407）
 
 MAX30102 心率 + 血氧 / BME280 温湿度气压 / MQ-4 甲烷 / MQ-7 一氧化碳 / BH1750 光照 / ATGM336H GPS
 
-### 运动监测（STM32F407）
+### 🏃 运动监测（STM32F407）
 
 MPU6050 姿态解算 + 三阶段跌倒状态机（携带模式）
 
-### 云端平台（PC）
+### ☁️ 云端平台（PC）
 
 | 功能 | 状态 |
 |------|------|
-| MQTT TLS 接收（EMQX Cloud 8883） | 已完成 |
-| InfluxDB 时序存储（全传感器 + 告警） | 已完成 |
-| 微信告警推送（Server酱，60s 冷却） | 已完成 |
-| REST API（FastAPI :8001，历史查询 + 快照） | 已完成 |
-| 声纹识别服务（resemblyzer 256 维，:8002） | 已完成 |
-| 传感器快照注入 AI 上下文（/api/sensor-snapshot） | 已完成 |
+| MQTT TLS 接收（EMQX Cloud 8883） | ✅ 已完成 |
+| InfluxDB 时序存储（全传感器 + 告警） | ✅ 已完成 |
+| 微信告警推送（Server酱，60s 冷却） | ✅ 已完成 |
+| REST API（FastAPI :8001，历史查询 + 快照） | ✅ 已完成 |
+| 声纹识别服务（resemblyzer 256 维，:8002） | ✅ 已完成 |
+| 传感器快照注入 AI 上下文（/api/sensor-snapshot） | ✅ 已完成 |
 
-### 前端看板（Web :8080）
+### 🖥️ 前端看板（Web :8080）
 
 | 页面 | 内容 |
 |------|------|
@@ -115,38 +163,6 @@ MPU6050 姿态解算 + 三阶段跌倒状态机（携带模式）
 | AI 助手 | TTS 音色/Prompt/记忆管理 + WebSocket 文字对话测试 |
 | 声纹注册 | 浏览器录音 / 上传注册 + 说话人管理 |
 | 人脸库管理 | 拖拽上传录入、人脸列表、删除（对应泰山派 /enroll 接口） |
-
----
-
-## 目录结构
-
-```
-embedded_design_competition/
-├── guardian_f407/              # STM32F407 RT-Thread 固件
-│   └── applications/           # 业务代码（传感器、跌倒检测、OLED、LED）
-├── guardian_esp32_ai/          # ESP32-S3 ESP-IDF 固件
-│   ├── main/                   # 应用代码（音频、WebSocket、传感器网关）
-│   └── wifi_config.csv         # WiFi / WebSocket 地址配置（修改后生成 NVS bin 烧录）
-├── guardian_taishanpi/         # RK3576 泰山派视觉 AI
-│   └── rknn/
-│       ├── zerocopy/
-│       │   └── pipeline_zerocopy.py  # 主推理流水线（放置模式）
-│       ├── pipeline_carry.py         # 携带模式目标检测
-│       └── face_db/                  # 已注册人脸特征库
-├── guardian_server/            # PC 端 AI 语音服务
-│   ├── main/xiaozhi-server/    # xiaozhi-esp32-server（第三方，含二次开发）
-│   │   └── data/.config.yaml   # 运行时配置（TTS/ASR/LLM/声纹）
-│   ├── voiceprint_service/     # 声纹识别服务（:8002）
-│   └── funasr_http_service.py  # FunASR HTTP 服务（:10097）
-├── guardian_cloud/             # PC 端云端服务 + 前端
-│   ├── backend/
-│   │   ├── api.py              # REST API（:8001）
-│   │   └── mqtt_subscriber.py  # MQTT 订阅 + InfluxDB + 微信推送
-│   └── frontend/
-│       └── index.html          # 单文件前端看板
-├── start_all.bat               # 一键启动脚本（Windows）
-└── docs/                       # 开发文档（gitignore，本地保留）
-```
 
 ---
 
@@ -249,6 +265,39 @@ python guardian_server/voiceprint_service/register.py <音频.wav>
 
 ---
 
+## 目录结构
+
+```
+embedded_design_competition/
+├── guardian_f407/              # STM32F407 RT-Thread 固件
+│   └── applications/           # 业务代码（传感器、跌倒检测、OLED、LED）
+├── guardian_esp32_ai/          # ESP32-S3 ESP-IDF 固件
+│   ├── main/                   # 应用代码（音频、WebSocket、传感器网关）
+│   └── wifi_config.csv         # WiFi / WebSocket 地址配置（修改后生成 NVS bin 烧录）
+├── guardian_taishanpi/         # RK3576 泰山派视觉 AI
+│   └── rknn/
+│       ├── zerocopy/
+│       │   └── pipeline_zerocopy.py  # 主推理流水线（放置模式）
+│       ├── pipeline_carry.py         # 携带模式目标检测
+│       └── face_db/                  # 已注册人脸特征库
+├── guardian_server/            # PC 端 AI 语音服务
+│   ├── main/xiaozhi-server/    # xiaozhi-esp32-server（第三方，含二次开发）
+│   │   └── data/.config.yaml   # 运行时配置（TTS/ASR/LLM/声纹）
+│   ├── voiceprint_service/     # 声纹识别服务（:8002）
+│   └── funasr_http_service.py  # FunASR HTTP 服务（:10097）
+├── guardian_cloud/             # PC 端云端服务 + 前端
+│   ├── backend/
+│   │   ├── api.py              # REST API（:8001）
+│   │   └── mqtt_subscriber.py  # MQTT 订阅 + InfluxDB + 微信推送
+│   └── frontend/
+│       └── index.html          # 单文件前端看板
+├── image/                      # README 展示图片
+├── start_all.bat               # 一键启动脚本（Windows）
+└── docs/                       # 开发文档（gitignore，本地保留）
+```
+
+---
+
 ## 技术栈
 
 | 层 | 技术 |
@@ -285,4 +334,8 @@ python guardian_server/voiceprint_service/register.py <音频.wav>
 
 ---
 
-*最后更新：2026-04-30*
+<div align="center">
+
+Made with ❤️ for 全国大学生嵌入式芯片与系统设计竞赛 2026
+
+</div>
