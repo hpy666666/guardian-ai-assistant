@@ -11,6 +11,8 @@
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
 ![Platform](https://img.shields.io/badge/Platform-RK3576%20%7C%20ESP32--S3%20%7C%20STM32F407-orange)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
+![GitHub Stars](https://img.shields.io/github/stars/hpy666666/guardian-ai-assistant?style=social)
+![GitHub Forks](https://img.shields.io/github/forks/hpy666666/guardian-ai-assistant?style=social)
 
 > 全国大学生嵌入式芯片与系统设计竞赛 2026 · 睿赛德赛道
 
@@ -37,7 +39,13 @@
 
 ### 跌倒检测演示
 
-> 演示视频（225MB）超出 GitHub 文件限制，本地运行后可在 `image/result_vedio/fall_result.mp4` 查看跌倒检测效果。
+<div align="center">
+
+<video src="image/result_vedio/fall_result_low.mp4" width="640" controls muted loop>
+  跌倒检测演示视频
+</video>
+
+</div>
 
 ---
 
@@ -50,7 +58,6 @@
 - [硬件配置](#硬件配置)
 - [目录结构](#目录结构)
 - [技术栈](#技术栈)
-- [待完成事项](#待完成事项)
 
 ---
 
@@ -291,7 +298,7 @@ embedded_design_competition/
 │   │   └── mqtt_subscriber.py  # MQTT 订阅 + InfluxDB + 微信推送
 │   └── frontend/
 │       └── index.html          # 单文件前端看板
-├── image/                      # README 展示图片
+├── image/                      # README 展示图片与演示视频
 ├── start_all.bat               # 一键启动脚本（Windows）
 └── docs/                       # 开发文档（gitignore，本地保留）
 ```
@@ -310,27 +317,6 @@ embedded_design_competition/
 | 消息传输 | EMQX Cloud MQTT TLS 8883 |
 | 后端 | FastAPI Python 3.12 / paho-mqtt / resemblyzer（声纹）|
 | 前端 | 原生 HTML/JS / ECharts 5 / Leaflet 1.9 |
-
----
-
-## 待完成事项
-
-### 高优先级
-
-- **J8** 告警联动 AI 主动播报：mqtt_subscriber 收到跌倒告警后向 ESP32 推送语音提醒
-- **G1** 唤醒词模型配置：引入 WakeNet 模型，实现免按键唤醒
-
-### 中优先级
-
-- **H2** 打电话 / 发微信语音指令
-- **C3** IMU 跌倒阈值实测调参
-- **E4** 灯带告警联动（跌倒→红闪 / 气体→黄闪）
-
-### 低优先级
-
-- G10 对话记忆持久化（重启后清空）
-- J9 InfluxDB 数据降采样（>6h 图表）
-- L5 公网穿透稳定化（ngrok + WSL2）
 
 ---
 

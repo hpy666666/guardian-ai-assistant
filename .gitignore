@@ -49,7 +49,8 @@ models/
 tmp/
 */tmp/
 **/tmp/
-# 注意：fall_result.mp4 体积 225MB，超出 GitHub 100MB 限制，不上传
+# 例外：保留压缩后的演示视频（37MB，可上传）
+!image/result_vedio/fall_result_low.mp4
 
 # ============================================================
 # 图片与演示素材（image 目录）
