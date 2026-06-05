@@ -14,7 +14,7 @@
 ![GitHub Stars](https://img.shields.io/github/stars/hpy666666/guardian-ai-assistant?style=social)
 ![GitHub Forks](https://img.shields.io/github/forks/hpy666666/guardian-ai-assistant?style=social)
 
-> 全国大学生嵌入式芯片与系统设计竞赛 2026 · 睿赛德赛道
+
 
 </div>
 
@@ -55,7 +55,7 @@
 
 ## 核心创新
 
-- **双冗余跌倒检测**：视觉（YOLOv8n-pose，96% 准确率）与 IMU（三阶段 FSM，100% 触发率）双模互补，放置/携带模式自适应切换
+- **双冗余跌倒检测**：视觉（YOLOv8n-pose）与 IMU（三阶段 FSM）双模互补，放置/携带模式自适应切换
 - **传感器感知增强 AI 对话**：心率、血氧等实时传感器数据注入 LLM 上下文，AI 可回答"我现在心率正常吗"等具身感知问题
 - **NPU 多模型并行推理**：RK3576 三核 NPU 同时运行 YOLOv8n-pose / SCRFD+ArcFace / YOLOv8n-det，端到端 ~20 fps
 - **反诈骗智能监听**：陌生人声纹检测 + LLM 诈骗话术分析，实时 MQTT 告警推送
@@ -348,11 +348,5 @@ embedded_design_competition/
 ---
 
 <div align="center">
-
-📄 完整作品说明书请见 [`docs/`](docs/) —— 含系统架构、硬件设计、算法细节、性能测试等 8 章内容。
-
----
-
-Made with ❤️ for 全国大学生嵌入式芯片与系统设计竞赛 2026
 
 </div>
