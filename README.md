@@ -24,14 +24,18 @@
 
 <div align="center">
 
+<img src="image/硬件连接.jpg" width="760"/><br/><sub>硬件连接 — 四平台实物连接</sub>
+
+<br/>
+
 <table>
   <tr>
-    <td align="center"><img src="image/数据概览.png" width="380"/><br/><sub>数据概览 — 实时传感器卡片 + 折线图</sub></td>
-    <td align="center"><img src="image/告警历史.png" width="380"/><br/><sub>告警历史 — 跌倒 / 气体 / 陌生人告警列表</sub></td>
+    <td align="center"><img src="image/实时监控_数据概览.png" width="380"/><br/><sub>数据概览 — 实时传感器卡片 + 折线图</sub></td>
+    <td align="center"><img src="image/实时监控_实时位置.png" width="380"/><br/><sub>实时位置 — GPS 轨迹 + Leaflet 地图</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="image/ai语音助手.png" width="380"/><br/><sub>AI 语音助手 — Prompt / 记忆 / TTS 管理</sub></td>
-    <td align="center"><img src="image/硬件连接.jpg" width="380"/><br/><sub>硬件连接 — 四平台实物连接</sub></td>
+    <td align="center"><img src="image/实时监控_视频监控.png" width="380"/><br/><sub>视频监控 — MJPEG 视频流 + AI 推理状态</sub></td>
+    <td align="center"><img src="image/智能助手_AI对话.png" width="380"/><br/><sub>AI 语音助手 — 大模型对话 / TTS / 记忆管理</sub></td>
   </tr>
 </table>
 
