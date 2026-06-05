@@ -347,6 +347,33 @@ embedded_design_competition/
 
 ---
 
-<div align="center">
+## 开源协议
 
-</div>
+本项目基于 [MIT License](LICENSE) 开源。
+
+---
+
+## 致谢
+
+- **RT-Thread**：[https://github.com/RT-Thread/rt-thread](https://github.com/RT-Thread/rt-thread)
+- **xiaozhi-esp32**：[https://github.com/78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)
+- **xiaozhi-esp32-server**：[https://github.com/xinnan-tech/xiaozhi-esp32-server](https://github.com/xinnan-tech/xiaozhi-esp32-server)
+- **Ultralytics YOLOv8**：[https://github.com/ultralytics/ultralytics](https://github.com/ultralytics/ultralytics)
+- **rknn-toolkit2**：[https://github.com/airockchip/rknn-toolkit2](https://github.com/airockchip/rknn-toolkit2)
+- **FunASR**：[https://github.com/modelscope/FunASR](https://github.com/modelscope/FunASR)
+- **Resemblyzer**：[https://github.com/resemble-ai/Resemblyzer](https://github.com/resemble-ai/Resemblyzer)
+- **FastAPI**：[https://github.com/fastapi/fastapi](https://github.com/fastapi/fastapi)
+- **ECharts**：[https://github.com/apache/echarts](https://github.com/apache/echarts)
+- **Leaflet**：[https://github.com/Leaflet/Leaflet](https://github.com/Leaflet/Leaflet)
+
+---
+
+## 联系方式
+
+- **Issues**：[项目 Issues 页面](https://github.com/hpy666666/guardian-ai-assistant/issues)
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=hpy666666/guardian-ai-assistant&type=Date)](https://star-history.com/#hpy666666/guardian-ai-assistant&Date)
